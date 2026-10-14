@@ -72,7 +72,7 @@ Every variable and style the plugin writes carries plugin data (`src/plugin/keys
 - `src/core/` is typechecked twice: by `tsconfig.app.json` (DOM, ES2023) and by `tsconfig.plugin.json` (no DOM, `lib: ES2020`, target ES2017). It must stay free of DOM APIs and of anything newer than ES2020, and it must not import from `src/ui/` or use the `@/` alias, which the plugin build does not define. `src/plugin/` and `src/core/` use relative imports; the UI uses `@/`.
 - `manifest.json` sets `networkAccess` to `none`. The UI cannot fetch anything at runtime; fonts and assets must be bundled.
 - `documentAccess` is `dynamic-page`, so the sandbox uses the async Figma APIs (`getLocalVariablesAsync`, `getLocalTextStylesAsync`, …).
-- Colors are converted into the document's color profile (sRGB or Display P3) by `core/convert/color.ts`; the sandbox reports the profile in the `init` message.
+- Colors are converted by `core/convert/color.ts` through an 8-digit hex round-trip, always in sRGB; out-of-range channels are clipped, not gamut-mapped.
 - A text style can only be edited while both its current and its next font are loaded, and a style bound to a font variable switches font as soon as the variable changes. `apply.ts` loads the families up front for this reason.
 - Adding a Dark mode can throw on plans without multiple modes; that is caught and surfaced as `darkUnavailable`, not treated as an error.
 - UI strings go through `src/ui/i18n.tsx`, which has an `en` and a `ko` table. Add every new key to both.
