@@ -4,7 +4,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { exportCss } from "@/core/css/export"
 import { buildFigmaSpec } from "@/core/figma-spec/build"
-import { filterSpec, listGroups, retainedKeys } from "@/core/figma-spec/select"
+import { groupSwatches, selectGroups } from "@/core/figma-spec/select"
 import type { Language } from "@/core/messages"
 import {
   applyOverrides,
@@ -98,30 +98,15 @@ export function App() {
   )
   const css = useMemo(() => exportCss(defaultTokens, overrides), [overrides])
   const preview = useMemo(() => createTokenPreview(spec), [spec])
-  const groups = useMemo(() => listGroups(spec), [spec])
   const excluded = useMemo(
     () => new Set(overrides.excludedGroups),
     [overrides.excludedGroups]
   )
-  const selected = useMemo(() => filterSpec(spec, excluded), [spec, excluded])
-  const swatches = useMemo(() => {
-    const colors = new Map<string, string[]>()
-    const palette = spec.collections.find((c) => c.name === "Color")
-    for (const variable of palette?.variables ?? []) {
-      const segments = variable.name.split("/")
-      const id = `Color/${segments.length > 1 ? segments[0] : "other"}`
-      const css = tokens.get(variable.key)
-      if (css) {
-        colors.set(id, [...(colors.get(id) ?? []), css])
-      }
-    }
-
-    return colors
-  }, [spec, tokens])
-
-  const selectedCount = groups
-    .filter((group) => !excluded.has(group.id))
-    .reduce((sum, group) => sum + group.count, 0)
+  const selection = useMemo(
+    () => selectGroups(spec, excluded),
+    [spec, excluded]
+  )
+  const swatches = useMemo(() => groupSwatches(spec, tokens), [spec, tokens])
 
   /** `removed` names what a deletion took out; it can be undone for a while. */
   function update(next: Overrides, removed?: string) {
@@ -145,8 +130,8 @@ export function App() {
     })
     postToPlugin({
       type,
-      spec: selected,
-      retained: retainedKeys(spec, excluded),
+      spec: selection.spec,
+      retained: selection.retained,
     })
   }
 
@@ -168,7 +153,7 @@ export function App() {
           {reviewing ? (
             <ReviewView
               phase={phase}
-              groups={groups}
+              groups={selection.groups}
               excluded={excluded}
               swatches={swatches}
               unconverted={spec.skipped}
@@ -225,7 +210,7 @@ export function App() {
             reviewing={reviewing}
             phase={phase}
             changed={countThemeChanges(overrides)}
-            selected={selectedCount}
+            selected={selection.selectedCount}
             error={error}
             removed={undo?.label ?? null}
             onUndo={() => undo && update(undo.previous)}

@@ -3,100 +3,245 @@ import { describe, expect, it } from "vitest"
 
 import { parseThemeTokens } from "../css/parse"
 import { buildFigmaSpec } from "./build"
-import { filterSpec, listGroups, retainedKeys } from "./select"
+import type {
+  CollectionName,
+  EffectStyleSpec,
+  FigmaSpec,
+  TextStyleSpec,
+  VariableSpec,
+} from "./build"
+import { groupSwatches, selectGroups } from "./select"
 
-const spec = buildFigmaSpec(parseThemeTokens(themeCss, { skipReference: true }))
+const RED = { r: 1, g: 0, b: 0, a: 1 }
 
-describe("listGroups", () => {
-  const groups = listGroups(spec)
-  const group = (id: string) => groups.find((g) => g.id === id)
+const color = (key: string, name: string): VariableSpec => ({
+  key,
+  name,
+  type: "COLOR",
+  value: RED,
+  codeSyntax: `var(${key})`,
+})
 
-  it("groups colors by palette and keeps stepless colors together", () => {
-    expect(group("Color/red")).toMatchObject({ label: "red", count: 11 })
-    expect(group("Color/other")?.count).toBe(2)
-    expect(groups.filter((g) => g.section === "Color")).toHaveLength(27)
+const float = (key: string, name: string): VariableSpec => ({
+  key,
+  name,
+  type: "FLOAT",
+  value: 4,
+  codeSyntax: `var(${key})`,
+})
+
+const textStyle = (key: string, name: string): TextStyleSpec => ({
+  key,
+  name,
+  family: "Inter",
+  weight: 700,
+  fontSize: 14,
+  bindings: {
+    fontFamily: "--font-sans",
+    fontWeight: "--font-weight-bold",
+    fontSize: "--text-sm",
+  },
+})
+
+const effect = (key: string, name: string): EffectStyleSpec => ({
+  key,
+  name,
+  effects: [{ type: "LAYER_BLUR", radius: 4, radiusKey: "--blur-sm" }],
+})
+
+const collections = (
+  variables: Partial<Record<CollectionName, VariableSpec[]>>
+) =>
+  (["Color", "Typography", "Size"] as const).map((name) => ({
+    name,
+    variables: variables[name] ?? [],
+  }))
+
+const spec: FigmaSpec = {
+  collections: collections({
+    Color: [
+      color("--color-red-500", "red/500"),
+      color("--color-red-600", "red/600"),
+      color("--color-black", "black"),
+    ],
+    Typography: [
+      float("--text-sm", "text/sm/size"),
+      float("--font-weight-bold", "font-weight/bold"),
+    ],
+    Size: [
+      float("--spacing*4", "spacing/4"),
+      float("--radius-md", "radius/md"),
+    ],
+  }),
+  textStyles: [
+    textStyle("text:sans/sm/bold", "sans/sm/bold"),
+    textStyle("text:mono/sm/bold", "mono/sm/bold"),
+  ],
+  effectStyles: [
+    effect("--blur-sm@layer", "blur/sm"),
+    effect("--blur-sm@backdrop", "backdrop-blur/sm"),
+  ],
+  skipped: ["--color-bad"],
+}
+
+const keysOf = (s: FigmaSpec) => [
+  ...s.collections.flatMap((c) => c.variables.map((v) => v.key)),
+  ...s.textStyles.map((t) => t.key),
+  ...s.effectStyles.map((e) => e.key),
+]
+
+describe("selectGroups groups", () => {
+  const { groups } = selectGroups(spec, new Set())
+
+  it("lists groups in spec order with their sizes", () => {
+    expect(groups).toEqual([
+      { id: "Color/red", section: "Color", label: "red", count: 2 },
+      { id: "Color/other", section: "Color", label: "other", count: 1 },
+      { id: "Typography/text", section: "Typography", label: "text", count: 1 },
+      {
+        id: "Typography/font-weight",
+        section: "Typography",
+        label: "font-weight",
+        count: 1,
+      },
+      { id: "Size/spacing", section: "Size", label: "spacing", count: 1 },
+      { id: "Size/radius", section: "Size", label: "radius", count: 1 },
+      {
+        id: "Text styles/sans",
+        section: "Text styles",
+        label: "sans",
+        count: 1,
+      },
+      {
+        id: "Text styles/mono",
+        section: "Text styles",
+        label: "mono",
+        count: 1,
+      },
+      { id: "Effects/blur", section: "Effects", label: "blur", count: 1 },
+      {
+        id: "Effects/backdrop-blur",
+        section: "Effects",
+        label: "backdrop-blur",
+        count: 1,
+      },
+    ])
   })
 
-  it("groups the remaining variables and styles by namespace", () => {
-    expect(group("Size/spacing")?.count).toBe(35)
-    expect(group("Typography/text")?.count).toBe(26)
-    expect(group("Text styles/sans")?.count).toBe(117)
-    expect(group("Effects/backdrop-blur")?.count).toBe(7)
-  })
+  it("still lists a group after it is excluded", () => {
+    const result = selectGroups(spec, new Set(["Color/red"]))
 
-  it("accounts for every item exactly once", () => {
-    const total =
-      spec.collections.reduce((sum, c) => sum + c.variables.length, 0) +
-      spec.textStyles.length +
-      spec.effectStyles.length
-
-    expect(groups.reduce((sum, g) => sum + g.count, 0)).toBe(total)
+    expect(result.groups).toEqual(groups)
   })
 })
 
-describe("filterSpec", () => {
-  it("returns the same spec when nothing is excluded", () => {
-    expect(filterSpec(spec, new Set())).toBe(spec)
+describe("selectGroups selection", () => {
+  it("passes the spec through when nothing is excluded", () => {
+    const result = selectGroups(spec, new Set())
+
+    expect(result.spec).toBe(spec)
+    expect(result.selectedCount).toBe(keysOf(spec).length)
   })
 
-  it("removes only the excluded groups", () => {
-    const filtered = filterSpec(
+  it("drops excluded groups from the spec and retains their keys", () => {
+    const result = selectGroups(
       spec,
-      new Set([
-        "Color/taupe",
-        "Size/spacing",
-        "Text styles/sans",
-        "Effects/blur",
-      ])
-    )
-    const names = filtered.collections.flatMap((c) =>
-      c.variables.map((v) => v.name)
+      new Set(["Color/red", "Size/spacing", "Text styles/sans", "Effects/blur"])
     )
 
-    expect(names).not.toContain("taupe/500")
-    expect(names).toContain("red/500")
-    expect(names.some((n) => n.startsWith("spacing/"))).toBe(false)
-    expect(names).toContain("radius/md")
-    expect(filtered.textStyles).toEqual([])
-    expect(filtered.effectStyles.map((s) => s.name)).not.toContain("blur/sm")
-    expect(filtered.effectStyles.map((s) => s.name)).toContain(
-      "backdrop-blur/sm"
+    expect(keysOf(result.spec)).toEqual([
+      "--color-black",
+      "--text-sm",
+      "--font-weight-bold",
+      "--radius-md",
+      "text:mono/sm/bold",
+      "--blur-sm@backdrop",
+    ])
+    expect([...result.retained].sort()).toEqual(
+      [
+        "--color-red-500",
+        "--color-red-600",
+        "--spacing*4",
+        "text:sans/sm/bold",
+        "--blur-sm@layer",
+      ].sort()
     )
-    expect(filtered.collections.map((c) => c.name)).toEqual([
+  })
+
+  it("keeps every collection even when all its variables are excluded", () => {
+    const result = selectGroups(spec, new Set(["Color/red", "Color/other"]))
+
+    expect(result.spec.collections.map((c) => c.name)).toEqual([
       "Color",
       "Typography",
       "Size",
     ])
+    expect(result.spec.collections[0].variables).toEqual([])
+  })
+
+  it("counts the items of the groups that stay checked", () => {
+    const result = selectGroups(
+      spec,
+      new Set(["Color/red", "Text styles/sans"])
+    )
+
+    expect(result.selectedCount).toBe(keysOf(spec).length - 2 - 1)
+  })
+
+  it("carries the spec's own fields through to the narrowed spec", () => {
+    const result = selectGroups(spec, new Set(["Color/red"]))
+
+    expect(result.spec.skipped).toEqual(["--color-bad"])
   })
 })
 
-describe("retainedKeys", () => {
-  it("is empty when nothing is excluded", () => {
-    expect(retainedKeys(spec, new Set())).toEqual([])
-  })
+describe("selectGroups over a whole theme", () => {
+  const theme = buildFigmaSpec(
+    parseThemeTokens(themeCss, { skipReference: true })
+  )
+  const groups = selectGroups(theme, new Set()).groups
 
-  it("lists the keys of every item in an excluded group", () => {
-    const keys = retainedKeys(
+  it("puts every item on exactly one side, whatever is excluded", () => {
+    const all = keysOf(theme)
+    const sets = [
+      [],
+      groups.slice(0, 1).map((g) => g.id),
+      groups.filter((_, i) => i % 3 === 0).map((g) => g.id),
+      groups.map((g) => g.id),
+    ]
+
+    for (const ids of sets) {
+      const result = selectGroups(theme, new Set(ids))
+      const kept = keysOf(result.spec)
+      const held = new Set(result.retained)
+
+      expect(kept.length + held.size).toBe(all.length)
+      expect(kept.filter((key) => held.has(key))).toEqual([])
+      expect(result.selectedCount).toBe(kept.length)
+    }
+  })
+})
+
+describe("groupSwatches", () => {
+  it("collects the CSS colors of each color group", () => {
+    const swatches = groupSwatches(
       spec,
-      new Set(["Color/taupe", "Text styles/sans", "Effects/blur"])
+      new Map([
+        ["--color-red-500", "#f00"],
+        ["--color-red-600", "#c00"],
+        ["--color-black", "#000"],
+      ])
     )
 
-    expect(keys).toContain("--color-taupe-500")
-    expect(keys).toContain("text:sans/sm/semibold")
-    expect(keys).toContain("--blur-sm@layer")
-    expect(keys).not.toContain("--blur-sm@backdrop")
-    expect(keys).not.toContain("--color-red-500")
-    expect(keys).toHaveLength(11 + 117 + 7)
+    expect(swatches.get("Color/red")).toEqual(["#f00", "#c00"])
+    expect(swatches.get("Color/other")).toEqual(["#000"])
+    expect(swatches.has("Size/spacing")).toBe(false)
   })
 
-  it("covers exactly what filterSpec leaves out", () => {
-    const excluded = new Set(["Color/red", "Size/spacing"])
-    const kept = filterSpec(spec, excluded)
-    const count = (s: typeof spec) =>
-      s.collections.reduce((sum, c) => sum + c.variables.length, 0) +
-      s.textStyles.length +
-      s.effectStyles.length
+  it("skips colors whose token is not in the theme", () => {
+    const swatches = groupSwatches(spec, new Map([["--color-black", "#000"]]))
 
-    expect(retainedKeys(spec, excluded)).toHaveLength(count(spec) - count(kept))
+    expect(swatches.has("Color/red")).toBe(false)
+    expect(swatches.get("Color/other")).toEqual(["#000"])
   })
 })

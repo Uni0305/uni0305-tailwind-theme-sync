@@ -1,4 +1,5 @@
-import type { FigmaSpec } from "./build"
+import type { ThemeTokens } from "../css/parse"
+import type { CollectionName, FigmaSpec } from "./build"
 
 export type SpecSection =
   "Color" | "Typography" | "Size" | "Text styles" | "Effects"
@@ -11,107 +12,114 @@ export type SpecGroup = {
   count: number
 }
 
+export type Selection = {
+  /** Every group the spec can be narrowed by, in spec order. */
+  groups: SpecGroup[]
+  /** The spec without the excluded groups. The same object if none is. */
+  spec: FigmaSpec
+  /**
+   * Keys the sync must leave alone: the items of excluded groups, which are
+   * still part of the theme.
+   */
+  retained: string[]
+  /** Items in the groups that stay checked. */
+  selectedCount: number
+}
+
 /** Colors without a numeric step (`black`, `white`, semantic names). */
 const UNGROUPED = "other"
 
-function variableGroup(collection: string, name: string) {
+function variableGroup(collection: CollectionName, name: string) {
   const segments = name.split("/")
-  if (collection === "Color") {
-    return segments.length > 1 ? segments[0] : UNGROUPED
-  }
+  const label =
+    collection === "Color"
+      ? segments.length > 1
+        ? segments[0]
+        : UNGROUPED
+      : segments[0]
 
-  return segments[0]
+  return { id: `${collection}/${label}`, label }
 }
 
-function textStyleGroup(name: string) {
-  return name.split("/")[0]
-}
+function styleGroup(section: "Text styles" | "Effects", name: string) {
+  const label = name.split("/")[0]
 
-function effectStyleGroup(name: string) {
-  return name.split("/")[0]
-}
-
-/** Lists the groups a spec can be narrowed by, in spec order. */
-export function listGroups(spec: FigmaSpec): SpecGroup[] {
-  const groups = new Map<string, SpecGroup>()
-  const add = (section: SpecSection, label: string) => {
-    const id = `${section}/${label}`
-    const group = groups.get(id) ?? { id, section, label, count: 0 }
-    group.count += 1
-    groups.set(id, group)
-  }
-
-  for (const collection of spec.collections) {
-    for (const variable of collection.variables) {
-      add(collection.name, variableGroup(collection.name, variable.name))
-    }
-  }
-  for (const style of spec.textStyles) {
-    add("Text styles", textStyleGroup(style.name))
-  }
-  for (const style of spec.effectStyles) {
-    add("Effects", effectStyleGroup(style.name))
-  }
-
-  return [...groups.values()]
-}
-
-/** Drops every variable and style that belongs to an excluded group. */
-export function filterSpec(
-  spec: FigmaSpec,
-  excluded: ReadonlySet<string>
-): FigmaSpec {
-  if (excluded.size === 0) {
-    return spec
-  }
-
-  return {
-    ...spec,
-    collections: spec.collections.map((collection) => ({
-      ...collection,
-      variables: collection.variables.filter(
-        (v) =>
-          !excluded.has(
-            `${collection.name}/${variableGroup(collection.name, v.name)}`
-          )
-      ),
-    })),
-    textStyles: spec.textStyles.filter(
-      (s) => !excluded.has(`Text styles/${textStyleGroup(s.name)}`)
-    ),
-    effectStyles: spec.effectStyles.filter(
-      (s) => !excluded.has(`Effects/${effectStyleGroup(s.name)}`)
-    ),
-  }
+  return { id: `${section}/${label}`, label }
 }
 
 /**
- * Keys of the variables and styles in excluded groups. They are still part
- * of the theme, so anything already in the file for them must be left alone.
+ * Narrows a spec to the checked groups and works out what the sync has to
+ * leave alone. The two always come from the same exclusion, so they cannot
+ * disagree: every item is either in `spec` or in `retained`.
  */
-export function retainedKeys(
+export function selectGroups(
   spec: FigmaSpec,
   excluded: ReadonlySet<string>
-): string[] {
-  if (excluded.size === 0) {
-    return []
+): Selection {
+  const groups = new Map<string, SpecGroup>()
+  const retained: string[] = []
+  let selectedCount = 0
+
+  /** Counts the item in its group and tells whether its group stays. */
+  const place = (
+    { id, label }: { id: string; label: string },
+    section: SpecSection,
+    key: string
+  ) => {
+    const group = groups.get(id) ?? { id, section, label, count: 0 }
+    group.count += 1
+    groups.set(id, group)
+
+    if (excluded.has(id)) {
+      retained.push(key)
+
+      return false
+    }
+    selectedCount += 1
+
+    return true
   }
 
-  return [
-    ...spec.collections.flatMap((collection) =>
-      collection.variables
-        .filter((v) =>
-          excluded.has(
-            `${collection.name}/${variableGroup(collection.name, v.name)}`
-          )
+  const narrowed: FigmaSpec = {
+    ...spec,
+    collections: spec.collections.map((collection) => ({
+      ...collection,
+      variables: collection.variables.filter((variable) =>
+        place(
+          variableGroup(collection.name, variable.name),
+          collection.name,
+          variable.key
         )
-        .map((v) => v.key)
+      ),
+    })),
+    textStyles: spec.textStyles.filter((style) =>
+      place(styleGroup("Text styles", style.name), "Text styles", style.key)
     ),
-    ...spec.textStyles
-      .filter((s) => excluded.has(`Text styles/${textStyleGroup(s.name)}`))
-      .map((s) => s.key),
-    ...spec.effectStyles
-      .filter((s) => excluded.has(`Effects/${effectStyleGroup(s.name)}`))
-      .map((s) => s.key),
-  ]
+    effectStyles: spec.effectStyles.filter((style) =>
+      place(styleGroup("Effects", style.name), "Effects", style.key)
+    ),
+  }
+
+  return {
+    groups: [...groups.values()],
+    spec: excluded.size === 0 ? spec : narrowed,
+    retained,
+    selectedCount,
+  }
+}
+
+/** CSS colors of each color group, to preview next to its checkbox. */
+export function groupSwatches(spec: FigmaSpec, tokens: ThemeTokens) {
+  const colors = new Map<string, string[]>()
+  const palette = spec.collections.find((c) => c.name === "Color")
+
+  for (const variable of palette?.variables ?? []) {
+    const css = tokens.get(variable.key)
+    if (css) {
+      const { id } = variableGroup("Color", variable.name)
+      colors.set(id, [...(colors.get(id) ?? []), css])
+    }
+  }
+
+  return colors
 }
