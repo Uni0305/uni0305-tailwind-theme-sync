@@ -8,7 +8,7 @@ Tailwind Theme Sync: a Figma plugin that turns a Tailwind CSS v4 theme into Figm
 
 ## Commands
 
-The package manager is Bun.
+The package manager is Bun. The version is pinned in the `packageManager` field of `package.json`, and both workflows read it from there (`bun-version-file`), so bump it in that one place.
 
 ```bash
 bun install
