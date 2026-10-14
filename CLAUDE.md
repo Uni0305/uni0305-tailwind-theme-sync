@@ -31,6 +31,12 @@ Use `bun run test`, not `bun test`. The latter runs Bun's own runner, which bypa
 
 To try the plugin, import `manifest.json` in the Figma desktop app (Plugins → Development → Import plugin from manifest…). There is no watch build; run `bun run build` after each change.
 
+### CI and releases
+
+`.github/workflows/ci.yml` runs `lint`, `typecheck`, `test` and `build` on every push, and on pull requests only when they come from a fork (same-repo PRs are already covered by the push run). Actions are pinned to major tags; Dependabot updates them weekly along with the npm dependencies.
+
+To release: bump `version` in `package.json`, commit `chore: bump version to x.y.z`, then `git tag vx.y.z && git push --follow-tags`. `release.yml` reruns CI, fails if the tag differs from `package.json`, and attaches `tailwind-theme-sync-vx.y.z.zip` to a GitHub Release. Publishing to the Figma Community stays manual.
+
 ## Architecture
 
 Two programs are built from one source tree, and they only talk through `postMessage`:

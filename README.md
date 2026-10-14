@@ -3,6 +3,7 @@
 Turn a Tailwind CSS v4 theme into Figma variables, text styles, and effect
 styles.
 
+[![CI](https://github.com/Uni0305/uni0305-tailwind-theme-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/Uni0305/uni0305-tailwind-theme-sync/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Figma plugin](https://img.shields.io/badge/Figma-plugin-F24E1E?logo=figma&logoColor=white)
 ![Tailwind CSS v4](https://img.shields.io/badge/Tailwind%20CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)
@@ -33,11 +34,20 @@ duplicating it.
 
 ## Getting started
 
-The plugin is not published to the Figma Community, so you build it and import it
-in development mode.
+The plugin is not published to the Figma Community, so you import it in
+development mode. You need the
+[Figma desktop app](https://www.figma.com/downloads/).
 
-You need the [Figma desktop app](https://www.figma.com/downloads/) and
-[Bun](https://bun.sh).
+### From a release
+
+Download `tailwind-theme-sync-vX.Y.Z.zip` from the
+[Releases](https://github.com/Uni0305/uni0305-tailwind-theme-sync/releases)
+page and unzip it. Then in Figma, choose **Plugins → Development → Import plugin
+from manifest…** and select `manifest.json`.
+
+### From source
+
+You also need [Bun](https://bun.sh).
 
 ```bash
 git clone https://github.com/Uni0305/uni0305-tailwind-theme-sync.git
@@ -110,6 +120,11 @@ src/core/    Pure TypeScript shared by both sides: parsing, conversion, Figma sp
 src/plugin/  Sandbox code, the only place that calls the Figma API
 src/ui/      Plugin UI (React 19, Tailwind v4, shadcn on Base UI)
 ```
+
+CI runs lint, type-check, tests and the build on every push and on pull requests
+from forks. Pushing a `v*` tag runs the same checks, then attaches a zip to a
+GitHub Release. Recommended branch rule for `master`: Settings → Rules →
+require the `check` status check to pass before merging.
 
 See [CLAUDE.md](CLAUDE.md) for the architecture notes and constraints.
 
