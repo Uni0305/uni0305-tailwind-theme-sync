@@ -10,10 +10,14 @@ import {
   isValidTokenName,
   listFontSlots,
   listTokens,
+  paletteRenameIssue,
   parseOverrides,
   removeFontSlot,
   removeToken,
   removeTokens,
+  renameFontSlot,
+  renamePalette,
+  renameToken,
   resetToken,
   setDarkEnabled,
   setDarkValue,
@@ -21,6 +25,7 @@ import {
   setGroupsIncluded,
   setTextStyleSlot,
   setToken,
+  tokenRenameIssue,
   tokenTab,
 } from "./model"
 
@@ -352,5 +357,125 @@ describe("removing a group of tokens", () => {
 
     expect(next.removed).toEqual(["--color-blue-500"])
     expect(next.values).toEqual(edited.values)
+  })
+})
+
+describe("renames", () => {
+  const added = {
+    ...EMPTY_OVERRIDES,
+    values: {
+      "--color-brand": "#0d99ff",
+      "--color-primary": "var(--color-brand)",
+      "--color-ring": "var(--color-brand-soft, var( --color-brand ))",
+      "--color-brand-soft": "#e5f4ff",
+    },
+    dark: {
+      "--color-brand": "#0c8ce9",
+      "--color-primary": "var(--color-brand)",
+    },
+  }
+
+  it("moves values, dark values and var() references, but not look-alikes", () => {
+    const next = renameToken(added, defaults, "--color-brand", "--color-accent")
+
+    expect(Object.keys(next.values)).toEqual([
+      "--color-accent",
+      "--color-primary",
+      "--color-ring",
+      "--color-brand-soft",
+    ])
+    expect(next.values["--color-primary"]).toBe("var(--color-accent)")
+    expect(next.values["--color-ring"]).toBe(
+      "var(--color-brand-soft, var( --color-accent ))"
+    )
+    expect(next.dark).toEqual({
+      "--color-accent": "#0c8ce9",
+      "--color-primary": "var(--color-accent)",
+    })
+    expect(next.renames).toEqual({ "--color-accent": ["--color-brand"] })
+  })
+
+  it("folds chained renames into one record and forgets a name returned to", () => {
+    let next = renameToken(added, defaults, "--color-brand", "--color-accent")
+    next = renameToken(next, defaults, "--color-accent", "--color-key")
+    expect(next.renames).toEqual({
+      "--color-key": ["--color-brand", "--color-accent"],
+    })
+
+    next = renameToken(next, defaults, "--color-key", "--color-brand")
+    expect(next.renames).toEqual({
+      "--color-brand": ["--color-accent", "--color-key"],
+    })
+  })
+
+  it("moves the sub-properties of a text size along with it", () => {
+    const sized = {
+      ...EMPTY_OVERRIDES,
+      values: { "--text-huge": "4rem", "--text-huge--line-height": "1" },
+    }
+
+    expect(
+      renameToken(sized, defaults, "--text-huge", "--text-giant").values
+    ).toEqual({ "--text-giant": "4rem", "--text-giant--line-height": "1" })
+  })
+
+  it("rejects defaults, malformed names, other namespaces and names in use", () => {
+    const issue = (from: string, to: string) =>
+      tokenRenameIssue(added, defaults, from, to)
+
+    expect(issue("--color-brand", "--color-accent")).toBeNull()
+    expect(issue("--color-brand", "--color-brand")).toBeNull()
+    expect(issue("--color-red-500", "--color-x")).toBe("invalid")
+    expect(issue("--color-brand", "--color-Bad")).toBe("invalid")
+    expect(issue("--color-brand", "--radius-brand")).toBe("invalid")
+    expect(issue("--color-brand", "--color-primary")).toBe("taken")
+    expect(issue("--color-brand", "--color-blue-500")).toBe("taken")
+    expect(
+      renameToken(added, defaults, "--color-brand", "--color-primary")
+    ).toBe(added)
+  })
+
+  it("drops the record when the token is removed", () => {
+    const next = renameToken(added, defaults, "--color-brand", "--color-accent")
+
+    expect(removeToken(next, defaults, "--color-accent").renames).toEqual({})
+  })
+
+  it("renames a palette the user added, and keeps it unchecked", () => {
+    const palette = {
+      ...EMPTY_OVERRIDES,
+      values: {
+        "--color-brand-100": "#eee",
+        "--color-brand-500": "#333",
+        "--color-brand-dark-500": "#111",
+      },
+      excludedGroups: ["Color/brand"],
+    }
+    const next = renamePalette(palette, defaults, "brand", "accent")
+
+    expect(Object.keys(next.values)).toEqual([
+      "--color-accent-100",
+      "--color-accent-500",
+      "--color-brand-dark-500",
+    ])
+    expect(next.excludedGroups).toEqual(["Color/accent"])
+    expect(paletteRenameIssue(palette, defaults, "brand", "blue")).toBe("taken")
+    expect(paletteRenameIssue(palette, defaults, "red", "rose")).toBe("invalid")
+  })
+
+  it("renames a font slot with its family, text styles and group", () => {
+    let slotted = setFontFamily(EMPTY_OVERRIDES, defaults, "brand", "Satoshi")
+    slotted = setTextStyleSlot(slotted, "brand", true)
+    slotted = setGroupsIncluded(slotted, ["Text styles/brand"], false)
+    const next = renameFontSlot(slotted, defaults, "brand", "display")
+
+    expect(next.values).toEqual({ "--font-display": '"Satoshi", sans-serif' })
+    expect(next.fontFamilies).toEqual({ display: "Satoshi" })
+    expect(next.textStyleSlots).toEqual(["sans", "display"])
+    expect(next.excludedGroups).toEqual(["Text styles/display"])
+    expect(next.renames).toEqual({ "--font-display": ["--font-brand"] })
+    expect(renameFontSlot(slotted, defaults, "brand", "weight-x")).toBe(slotted)
+    expect(renameFontSlot(slotted, defaults, "sans", "body")).toBe(slotted)
+    expect(removeFontSlot(next, "display").renames).toEqual({})
   })
 })

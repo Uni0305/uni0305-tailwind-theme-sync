@@ -209,4 +209,21 @@ describe("applyImport", () => {
       display: "Satoshi",
     })
   })
+
+  it("keeps the rename records of the added tokens that remain", () => {
+    const renamed = {
+      ...current,
+      renames: {
+        "--color-old": ["--color-older"],
+        "--radius-md": ["--radius-x"],
+      },
+    }
+
+    expect(applyImport(renamed, result, families, "replace").renames).toEqual(
+      {}
+    )
+    expect(applyImport(renamed, result, families, "merge").renames).toEqual(
+      renamed.renames
+    )
+  })
 })

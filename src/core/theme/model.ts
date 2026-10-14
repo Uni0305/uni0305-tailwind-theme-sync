@@ -16,6 +16,12 @@ export type Overrides = {
   textStyleSlots: string[]
   /** Spec groups left out when applying to Figma. Not part of the theme. */
   excludedGroups: string[]
+  /**
+   * Earlier names of renamed tokens, oldest first, by the current CSS custom
+   * property. The sync uses them to find what the file holds under an old
+   * name. Not part of the theme.
+   */
+  renames: Record<string, string[]>
 }
 
 export const EMPTY_OVERRIDES: Overrides = {
@@ -27,6 +33,7 @@ export const EMPTY_OVERRIDES: Overrides = {
   fontFamilies: {},
   textStyleSlots: ["sans"],
   excludedGroups: [],
+  renames: {},
 }
 
 /** Reads stored overrides, falling back to defaults for anything unusable. */
@@ -214,6 +221,7 @@ export function removeToken(
     ...overrides,
     values: without(overrides.values, prop),
     dark: without(overrides.dark, prop),
+    renames: without(overrides.renames, prop),
     removed:
       defaults.has(prop) && !overrides.removed.includes(prop)
         ? [...overrides.removed, prop]
@@ -309,6 +317,7 @@ export function removeFontSlot(overrides: Overrides, slot: string): Overrides {
     values: without(overrides.values, `--font-${slot}`),
     fontFamilies: without(overrides.fontFamilies, slot),
     textStyleSlots: overrides.textStyleSlots.filter((s) => s !== slot),
+    renames: without(overrides.renames, `--font-${slot}`),
   }
 }
 
@@ -317,6 +326,269 @@ const TOKEN_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/
 /** Whether `name` can follow a namespace prefix in a custom property. */
 export function isValidTokenName(name: string) {
   return TOKEN_NAME.test(name)
+}
+
+/** `brand-500` for `--color-brand-500`: the part after the namespace. */
+export function tokenName(prop: string) {
+  return prop.slice(namespaceOf(prop).length)
+}
+
+/** Why a rename cannot go ahead: a malformed name, or one already in use. */
+export type RenameIssue = "invalid" | "taken"
+
+/** Whether a token was added by the user, the only kind that can be renamed. */
+function isCustom(overrides: Overrides, defaults: ThemeTokens, prop: string) {
+  return prop in overrides.values && !defaults.has(prop)
+}
+
+/**
+ * The props a rename moves, each with its new name: the token and the
+ * sub-properties that hang off it, such as `--text-brand--line-height`.
+ */
+function renamePairs(
+  overrides: Overrides,
+  from: string,
+  to: string
+): [string, string][] {
+  return Object.keys(overrides.values)
+    .filter((prop) => prop === from || prop.startsWith(`${from}--`))
+    .map((prop) => [prop, to + prop.slice(from.length)])
+}
+
+function pairsIssue(
+  overrides: Overrides,
+  defaults: ThemeTokens,
+  pairs: [string, string][]
+): RenameIssue | null {
+  return pairs.some(([, to]) => defaults.has(to) || to in overrides.values)
+    ? "taken"
+    : null
+}
+
+/**
+ * Moves tokens to new names: their light and dark values, every `var()` that
+ * points at them, and the record of the names they had before.
+ */
+function moveTokens(
+  overrides: Overrides,
+  pairs: [string, string][]
+): Overrides {
+  const moved = new Map(pairs)
+  const rename = (prop: string) => moved.get(prop) ?? prop
+  const relink = (value: string) =>
+    value.replace(
+      /(var\(\s*)(--[\w-]+)/g,
+      (_, head: string, prop: string) => head + rename(prop)
+    )
+  const rekey = (record: Record<string, string>) =>
+    Object.fromEntries(
+      Object.entries(record).map(([prop, value]) => [
+        rename(prop),
+        relink(value),
+      ])
+    )
+
+  const renames = Object.fromEntries(
+    Object.entries(overrides.renames).filter(([prop]) => !moved.has(prop))
+  )
+  for (const [from, to] of pairs) {
+    // Renaming back to an earlier name takes that name out of the record.
+    const history = [
+      ...new Set([...(overrides.renames[from] ?? []), from]),
+    ].filter((prop) => prop !== to)
+    if (history.length > 0) {
+      renames[to] = history
+    }
+  }
+
+  return {
+    ...overrides,
+    values: rekey(overrides.values),
+    dark: rekey(overrides.dark),
+    renames,
+  }
+}
+
+/** Checks renaming an added token, e.g. `--color-brand` to `--color-accent`. */
+export function tokenRenameIssue(
+  overrides: Overrides,
+  defaults: ThemeTokens,
+  from: string,
+  to: string
+): RenameIssue | null {
+  const namespace = namespaceOf(from)
+  if (
+    !isCustom(overrides, defaults, from) ||
+    !isValidTokenName(tokenName(from)) ||
+    namespaceOf(to) !== namespace ||
+    !isValidTokenName(to.slice(namespace.length))
+  ) {
+    return "invalid"
+  }
+
+  return to === from
+    ? null
+    : pairsIssue(overrides, defaults, renamePairs(overrides, from, to))
+}
+
+/** Renames an added token; anything `tokenRenameIssue` rejects is ignored. */
+export function renameToken(
+  overrides: Overrides,
+  defaults: ThemeTokens,
+  from: string,
+  to: string
+): Overrides {
+  if (to === from || tokenRenameIssue(overrides, defaults, from, to)) {
+    return overrides
+  }
+
+  return moveTokens(overrides, renamePairs(overrides, from, to))
+}
+
+function paletteProps(tokens: Iterable<string>, palette: string) {
+  const step = new RegExp(`^--color-${palette}-\\d+$`)
+
+  return [...tokens].filter((prop) => step.test(prop))
+}
+
+/**
+ * Checks renaming a whole color palette. Only a palette the user added
+ * entirely can be renamed, and only to a palette name nothing uses yet.
+ */
+export function paletteRenameIssue(
+  overrides: Overrides,
+  defaults: ThemeTokens,
+  from: string,
+  to: string
+): RenameIssue | null {
+  const tokens = [...applyOverrides(defaults, overrides).keys()]
+  const props = paletteProps(tokens, from)
+  if (
+    props.length === 0 ||
+    props.some((prop) => !isCustom(overrides, defaults, prop)) ||
+    !isValidTokenName(to)
+  ) {
+    return "invalid"
+  }
+  if (to === from) {
+    return null
+  }
+
+  return paletteProps([...tokens, ...defaults.keys()], to).length > 0
+    ? "taken"
+    : pairsIssue(
+        overrides,
+        defaults,
+        props.flatMap((prop) =>
+          renamePairs(
+            overrides,
+            prop,
+            `--color-${to}${prop.slice(`--color-${from}`.length)}`
+          )
+        )
+      )
+}
+
+function moveGroup(overrides: Overrides, from: string, to: string) {
+  return overrides.excludedGroups.map((id) => (id === from ? to : id))
+}
+
+/**
+ * Renames every step of an added palette, e.g. `--color-brand-*` to
+ * `--color-accent-*`. An unchecked palette stays unchecked.
+ */
+export function renamePalette(
+  overrides: Overrides,
+  defaults: ThemeTokens,
+  from: string,
+  to: string
+): Overrides {
+  if (to === from || paletteRenameIssue(overrides, defaults, from, to)) {
+    return overrides
+  }
+
+  const props = paletteProps(Object.keys(overrides.values), from)
+  const moved = moveTokens(
+    overrides,
+    props.flatMap((prop) =>
+      renamePairs(
+        overrides,
+        prop,
+        `--color-${to}${prop.slice(`--color-${from}`.length)}`
+      )
+    )
+  )
+
+  return {
+    ...moved,
+    excludedGroups: moveGroup(overrides, `Color/${from}`, `Color/${to}`),
+  }
+}
+
+/** Checks renaming an added font slot, e.g. `brand` to `display`. */
+export function fontSlotRenameIssue(
+  overrides: Overrides,
+  defaults: ThemeTokens,
+  from: string,
+  to: string
+): RenameIssue | null {
+  // `weight-*` would read as a font weight token, not a slot.
+  if (to === "weight" || to.startsWith("weight-")) {
+    return "invalid"
+  }
+
+  return tokenRenameIssue(overrides, defaults, `--font-${from}`, `--font-${to}`)
+}
+
+/**
+ * Renames an added font slot, carrying its Figma family, its text styles and
+ * whether their group is checked over to the new name.
+ */
+export function renameFontSlot(
+  overrides: Overrides,
+  defaults: ThemeTokens,
+  from: string,
+  to: string
+): Overrides {
+  if (to === from || fontSlotRenameIssue(overrides, defaults, from, to)) {
+    return overrides
+  }
+
+  const prop = `--font-${from}`
+  const moved = moveTokens(
+    overrides,
+    renamePairs(overrides, prop, `--font-${to}`)
+  )
+
+  return {
+    ...moved,
+    fontFamilies: Object.fromEntries(
+      Object.entries(overrides.fontFamilies).map(([slot, family]) => [
+        slot === from ? to : slot,
+        family,
+      ])
+    ),
+    textStyleSlots: overrides.textStyleSlots.map((slot) =>
+      slot === from ? to : slot
+    ),
+    excludedGroups: moveGroup(
+      overrides,
+      `Text styles/${from}`,
+      `Text styles/${to}`
+    ),
+  }
+}
+
+/** Drops the rename records of tokens that are no longer added ones. */
+export function pruneRenames(overrides: Overrides): Overrides {
+  return {
+    ...overrides,
+    renames: Object.fromEntries(
+      Object.entries(overrides.renames).filter(
+        ([prop]) => prop in overrides.values
+      )
+    ),
+  }
 }
 
 /** Checks or unchecks spec groups for the next apply. */

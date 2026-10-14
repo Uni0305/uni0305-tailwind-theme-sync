@@ -1,6 +1,7 @@
 import postcss from "postcss"
 
 import { fontSlot, namespaceOf } from "../theme/model"
+import { pruneRenames } from "../theme/model"
 import type { Overrides } from "../theme/model"
 import type { ThemeTokens } from "./parse"
 
@@ -188,7 +189,8 @@ export function matchFontFamily(name: string, families: ReadonlySet<string>) {
  * Folds an import into the current overrides. "replace" starts over from the
  * imported theme; "merge" keeps existing changes the import does not touch.
  * Settings that are not part of the theme (apply selection, text style
- * slots) are kept either way.
+ * slots) are kept either way, and so are the rename records of the added
+ * tokens that remain.
  */
 export function applyImport(
   current: Overrides,
@@ -204,19 +206,19 @@ export function applyImport(
   )
 
   if (mode === "replace") {
-    return {
+    return pruneRenames({
       ...current,
       values: result.values,
       removed: result.removed,
       dark: result.dark,
       darkEnabled: Object.keys(result.dark).length > 0,
       fontFamilies,
-    }
+    })
   }
 
   const values = { ...current.values, ...result.values }
 
-  return {
+  return pruneRenames({
     ...current,
     values,
     removed: [...new Set([...current.removed, ...result.removed])].filter(
@@ -225,5 +227,5 @@ export function applyImport(
     dark: { ...current.dark, ...result.dark },
     darkEnabled: current.darkEnabled || Object.keys(result.dark).length > 0,
     fontFamilies: { ...current.fontFamilies, ...fontFamilies },
-  }
+  })
 }
