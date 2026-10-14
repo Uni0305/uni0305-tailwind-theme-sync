@@ -1,7 +1,7 @@
 {
   "name": "uni0305-tailwind-theme-sync",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "packageManager": "bun@1.4.3",
   "scripts": {
