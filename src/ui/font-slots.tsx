@@ -10,6 +10,7 @@ import {
   listFontSlots,
   removeFontSlot,
   setFontFamily,
+  setTextStyleSlot,
 } from "@/core/theme/model"
 import type { Overrides } from "@/core/theme/model"
 import { FontPicker } from "@/ui/font-picker"
@@ -70,14 +71,7 @@ export function FontSlots({
                 <Checkbox
                   checked={overrides.textStyleSlots.includes(row.slot)}
                   onCheckedChange={(checked) =>
-                    onChange({
-                      ...overrides,
-                      textStyleSlots: checked
-                        ? [...overrides.textStyleSlots, row.slot]
-                        : overrides.textStyleSlots.filter(
-                            (slot) => slot !== row.slot
-                          ),
-                    })
+                    onChange(setTextStyleSlot(overrides, row.slot, checked))
                   }
                 />
                 {t("textStyles")}

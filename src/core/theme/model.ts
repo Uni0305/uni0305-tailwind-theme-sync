@@ -319,8 +319,68 @@ export function isValidTokenName(name: string) {
   return TOKEN_NAME.test(name)
 }
 
-/** Whether anything, theme or apply settings, differs from a fresh start. */
-export function hasThemeChanges(overrides: Overrides) {
+/** Checks or unchecks spec groups for the next apply. */
+export function setGroupsIncluded(
+  overrides: Overrides,
+  ids: string[],
+  included: boolean
+): Overrides {
+  const excluded = new Set(overrides.excludedGroups)
+  for (const id of ids) {
+    if (included) {
+      excluded.delete(id)
+    } else {
+      excluded.add(id)
+    }
+  }
+
+  return { ...overrides, excludedGroups: [...excluded] }
+}
+
+/** Gives a font slot a full set of text styles, or takes them away. */
+export function setTextStyleSlot(
+  overrides: Overrides,
+  slot: string,
+  enabled: boolean
+): Overrides {
+  if (overrides.textStyleSlots.includes(slot) === enabled) {
+    return overrides
+  }
+
+  return {
+    ...overrides,
+    textStyleSlots: enabled
+      ? [...overrides.textStyleSlots, slot]
+      : overrides.textStyleSlots.filter((s) => s !== slot),
+  }
+}
+
+/** Switches dark mode; the dark values stay for when it is switched back. */
+export function setDarkEnabled(
+  overrides: Overrides,
+  enabled: boolean
+): Overrides {
+  return { ...overrides, darkEnabled: enabled }
+}
+
+/**
+ * How many theme entries differ from Tailwind's defaults. Apply settings
+ * (unchecked groups, text style slots) are not part of the theme.
+ */
+export function countThemeChanges(overrides: Overrides) {
+  return (
+    Object.keys(overrides.values).length +
+    overrides.removed.length +
+    Object.keys(overrides.dark).length +
+    Object.keys(overrides.fontFamilies).length
+  )
+}
+
+/**
+ * Whether anything differs from a fresh start, theme or apply settings
+ * alike, since a reset clears both.
+ */
+export function hasAnyChanges(overrides: Overrides) {
   return JSON.stringify(overrides) !== JSON.stringify(EMPTY_OVERRIDES)
 }
 

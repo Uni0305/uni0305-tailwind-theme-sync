@@ -30,6 +30,7 @@ import {
   removeToken,
   removeTokens,
   resetToken,
+  setDarkEnabled,
   setDarkValue,
   setToken,
   TAB_NAMESPACES,
@@ -353,7 +354,7 @@ export function TokenTable(props: TokenTableProps) {
                     size="sm"
                     checked={overrides.darkEnabled}
                     onCheckedChange={(checked) =>
-                      onChange({ ...overrides, darkEnabled: checked })
+                      onChange(setDarkEnabled(overrides, checked))
                     }
                   />
                 }

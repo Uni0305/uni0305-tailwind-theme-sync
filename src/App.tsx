@@ -8,9 +8,11 @@ import { filterSpec, listGroups, retainedKeys } from "@/core/figma-spec/select"
 import type { Language } from "@/core/messages"
 import {
   applyOverrides,
+  countThemeChanges,
   EMPTY_OVERRIDES,
-  hasThemeChanges,
+  hasAnyChanges,
   parseOverrides,
+  setGroupsIncluded,
 } from "@/core/theme/model"
 import type { Overrides } from "@/core/theme/model"
 import { ApplyBar } from "@/ui/apply-bar"
@@ -24,7 +26,6 @@ import { ReviewView } from "@/ui/review-view"
 import type { Phase } from "@/ui/review-view"
 import { TabBar } from "@/ui/tab-bar"
 import type { Tab } from "@/ui/tab-bar"
-import { countThemeChanges } from "@/ui/theme-changes"
 import { defaultTokens } from "@/ui/theme-default"
 import { createTokenPreview } from "@/ui/token-preview"
 import { TokenTable } from "@/ui/token-table"
@@ -132,15 +133,7 @@ export function App() {
   }
 
   function toggle(ids: string[], included: boolean) {
-    const next = new Set(excluded)
-    for (const id of ids) {
-      if (included) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-    }
-    update({ ...overrides, excludedGroups: [...next] })
+    update(setGroupsIncluded(overrides, ids, included))
   }
 
   function send(type: "preview" | "apply", label: MessageKey) {
@@ -190,7 +183,7 @@ export function App() {
             >
               <TabBar
                 language={language}
-                canReset={hasThemeChanges(overrides)}
+                canReset={hasAnyChanges(overrides)}
                 onSwitchLanguage={switchLanguage}
                 onReset={() => setResetting(true)}
               />

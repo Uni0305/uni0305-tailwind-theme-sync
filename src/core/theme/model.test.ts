@@ -5,7 +5,8 @@ import {
   EMPTY_OVERRIDES,
   fontSlot,
   groupColorRows,
-  hasThemeChanges,
+  countThemeChanges,
+  hasAnyChanges,
   isValidTokenName,
   listFontSlots,
   listTokens,
@@ -14,8 +15,11 @@ import {
   removeToken,
   removeTokens,
   resetToken,
+  setDarkEnabled,
   setDarkValue,
   setFontFamily,
+  setGroupsIncluded,
+  setTextStyleSlot,
   setToken,
   tokenTab,
 } from "./model"
@@ -184,26 +188,97 @@ describe("isValidTokenName", () => {
   })
 })
 
-describe("hasThemeChanges", () => {
+describe("hasAnyChanges", () => {
   it("is false for untouched overrides", () => {
-    expect(hasThemeChanges(EMPTY_OVERRIDES)).toBe(false)
+    expect(hasAnyChanges(EMPTY_OVERRIDES)).toBe(false)
   })
 
   it("is true once anything differs from the defaults", () => {
     expect(
-      hasThemeChanges(
-        setToken(EMPTY_OVERRIDES, defaults, "--radius-md", "1rem")
-      )
+      hasAnyChanges(setToken(EMPTY_OVERRIDES, defaults, "--radius-md", "1rem"))
     ).toBe(true)
     expect(
-      hasThemeChanges(removeToken(EMPTY_OVERRIDES, defaults, "--radius-md"))
+      hasAnyChanges(removeToken(EMPTY_OVERRIDES, defaults, "--radius-md"))
     ).toBe(true)
     expect(
-      hasThemeChanges({ ...EMPTY_OVERRIDES, excludedGroups: ["Color/red"] })
+      hasAnyChanges({ ...EMPTY_OVERRIDES, excludedGroups: ["Color/red"] })
     ).toBe(true)
     expect(
-      hasThemeChanges({ ...EMPTY_OVERRIDES, textStyleSlots: ["sans", "mono"] })
+      hasAnyChanges({ ...EMPTY_OVERRIDES, textStyleSlots: ["sans", "mono"] })
     ).toBe(true)
+  })
+})
+
+describe("apply settings", () => {
+  it("unchecks groups and checks them again", () => {
+    const unchecked = setGroupsIncluded(
+      EMPTY_OVERRIDES,
+      ["Color/red", "Size/spacing"],
+      false
+    )
+
+    expect(unchecked.excludedGroups).toEqual(["Color/red", "Size/spacing"])
+    expect(
+      setGroupsIncluded(unchecked, ["Color/red"], true).excludedGroups
+    ).toEqual(["Size/spacing"])
+  })
+
+  it("does not list a group twice or disturb the order", () => {
+    const overrides = { ...EMPTY_OVERRIDES, excludedGroups: ["B", "A"] }
+
+    expect(
+      setGroupsIncluded(overrides, ["A", "C"], false).excludedGroups
+    ).toEqual(["B", "A", "C"])
+  })
+
+  it("leaves the slot order alone when nothing changes", () => {
+    const overrides = { ...EMPTY_OVERRIDES, textStyleSlots: ["mono", "sans"] }
+
+    expect(setTextStyleSlot(overrides, "mono", true)).toBe(overrides)
+  })
+
+  it("turns text styles on and off per font slot", () => {
+    const on = setTextStyleSlot(EMPTY_OVERRIDES, "mono", true)
+
+    expect(on.textStyleSlots).toEqual(["sans", "mono"])
+    expect(setTextStyleSlot(on, "sans", false).textStyleSlots).toEqual(["mono"])
+    expect(setTextStyleSlot(on, "mono", true).textStyleSlots).toEqual([
+      "sans",
+      "mono",
+    ])
+  })
+
+  it("keeps dark values while dark mode is off", () => {
+    const dark = setDarkEnabled(
+      setDarkValue(EMPTY_OVERRIDES, "--color-red-500", "maroon"),
+      true
+    )
+    const off = setDarkEnabled(dark, false)
+
+    expect(off.darkEnabled).toBe(false)
+    expect(off.dark).toEqual({ "--color-red-500": "maroon" })
+    expect(setDarkEnabled(off, true)).toEqual(dark)
+  })
+})
+
+describe("countThemeChanges", () => {
+  it("counts changed, removed and added tokens and chosen fonts", () => {
+    let overrides = setToken(EMPTY_OVERRIDES, defaults, "--radius-md", "1rem")
+    overrides = removeToken(overrides, defaults, "--shadow-sm")
+    overrides = setToken(overrides, defaults, "--color-brand", "teal")
+    overrides = setFontFamily(overrides, defaults, "sans", "Pretendard")
+
+    expect(countThemeChanges(overrides)).toBe(4)
+  })
+
+  it("leaves apply settings out", () => {
+    const settings = setTextStyleSlot(
+      setGroupsIncluded(EMPTY_OVERRIDES, ["Color/red"], false),
+      "mono",
+      true
+    )
+
+    expect(countThemeChanges(settings)).toBe(0)
   })
 })
 
