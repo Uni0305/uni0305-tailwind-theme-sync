@@ -21,7 +21,7 @@ duplicating it.
   Size and Typography variables are limited to the fields they fit, so a radius
   only shows up for corner radius and a font size only for font size.
 - **Dark values.** Colors can carry a Dark value, written as a second mode.
-  Colors are converted to the document's profile (sRGB or Display P3).
+  Colors are always written in sRGB; channels outside the gamut are clipped.
 - **CSS in and out.** Imports `@theme`, `:root`, and `.dark` blocks, follows
   `var()` chains, and honors `initial` resets. Exports only what differs from
   Tailwind's defaults.
@@ -123,8 +123,7 @@ src/ui/      Plugin UI (React 19, Tailwind v4, shadcn on Base UI)
 
 CI runs lint, type-check, tests and the build on every push and on pull requests
 from forks. Pushing a `v*` tag runs the same checks, then attaches a zip to a
-GitHub Release. Recommended branch rule for `master`: Settings → Rules →
-require the `check` status check to pass before merging.
+GitHub Release.
 
 See [CLAUDE.md](CLAUDE.md) for the architecture notes and constraints.
 
