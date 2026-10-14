@@ -1,6 +1,5 @@
 import { Ellipsis, Languages, RotateCcw } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -10,12 +9,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import type { ColorProfile } from "@/core/convert/color"
 import type { Language } from "@/core/messages"
 import type { TokenTab } from "@/core/theme/model"
 import { useTranslate } from "@/ui/i18n"
@@ -35,7 +28,6 @@ const TAB_CLASS =
   "h-full flex-none rounded-none px-2 after:-bottom-px! after:bg-primary!"
 
 type TabBarProps = {
-  colorProfile: ColorProfile
   language: Language
   canReset: boolean
   onSwitchLanguage: () => void
@@ -44,7 +36,6 @@ type TabBarProps = {
 
 /** Token tabs on the left, CSS in and out set apart, file info and menu last. */
 export function TabBar({
-  colorProfile,
   language,
   canReset,
   onSwitchLanguage,
@@ -66,15 +57,6 @@ export function TabBar({
         </TabsTrigger>
       </TabsList>
       <div className="ml-auto flex items-center gap-1.5 pr-1">
-        <Tooltip>
-          <TooltipTrigger
-            render={<Badge variant="outline" className="font-normal" />}
-          >
-            <span className="sr-only">{t("colorProfile")}: </span>
-            {colorProfile === "DISPLAY_P3" ? "Display P3" : "sRGB"}
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t("colorProfile")}</TooltipContent>
-        </Tooltip>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={

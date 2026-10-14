@@ -9,7 +9,6 @@ const en = {
   tabEffects: "Effects",
   tabCss: "CSS",
   menu: "More",
-  colorProfile: "Document color profile",
   importTitle: "Import",
   importHint:
     "Paste a Tailwind v4 stylesheet. @theme, :root, and .dark blocks are read.",
@@ -107,7 +106,6 @@ const ko: Record<MessageKey, string> = {
   tabEffects: "이펙트",
   tabCss: "CSS",
   menu: "더 보기",
-  colorProfile: "문서 색 프로파일",
   importTitle: "가져오기",
   importHint:
     "Tailwind v4 스타일시트를 붙여넣으세요. @theme, :root, .dark 블록을 읽습니다.",

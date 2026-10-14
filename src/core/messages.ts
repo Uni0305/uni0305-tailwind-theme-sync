@@ -1,4 +1,3 @@
-import type { ColorProfile } from "./convert/color"
 import type { FigmaSpec } from "./figma-spec/build"
 import type { Overrides } from "./theme/model"
 
@@ -30,7 +29,6 @@ export type UiMessage =
 export type PluginMessage =
   | {
       type: "init"
-      colorProfile: ColorProfile
       /** Stored overrides as JSON, or null when the file has none. */
       overrides: string | null
       language: Language | null

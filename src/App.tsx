@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react"
 
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { ColorProfile } from "@/core/convert/color"
 import { exportCss } from "@/core/css/export"
 import { buildFigmaSpec } from "@/core/figma-spec/build"
 import { filterSpec, listGroups, retainedKeys } from "@/core/figma-spec/select"
@@ -36,7 +35,6 @@ const UNDO_MS = 6000
 type Undo = { previous: Overrides; label: string }
 
 export function App() {
-  const [colorProfile, setColorProfile] = useState<ColorProfile>("SRGB")
   const [overrides, setOverrides] = useState<Overrides>(EMPTY_OVERRIDES)
   const [language, setLanguage] = useState<Language>(detectLanguage)
   const [families, setFamilies] = useState<ReadonlySet<string>>(new Set())
@@ -50,7 +48,6 @@ export function App() {
   useEffect(() => {
     const unsubscribe = onPluginMessage((message) => {
       if (message.type === "init") {
-        setColorProfile(message.colorProfile)
         setOverrides(parseOverrides(message.overrides))
         if (message.language) {
           setLanguage(message.language)
@@ -92,12 +89,11 @@ export function App() {
   const spec = useMemo(
     () =>
       buildFigmaSpec(tokens, {
-        colorProfile,
         fontFamilies: overrides.fontFamilies,
         textStyleSlots: overrides.textStyleSlots,
         dark: overrides.darkEnabled ? overrides.dark : undefined,
       }),
-    [tokens, colorProfile, overrides]
+    [tokens, overrides]
   )
   const css = useMemo(() => exportCss(defaultTokens, overrides), [overrides])
   const preview = useMemo(() => createTokenPreview(spec), [spec])
@@ -193,7 +189,6 @@ export function App() {
               onValueChange={(value) => setTab(value as Tab)}
             >
               <TabBar
-                colorProfile={colorProfile}
                 language={language}
                 canReset={hasThemeChanges(overrides)}
                 onSwitchLanguage={switchLanguage}

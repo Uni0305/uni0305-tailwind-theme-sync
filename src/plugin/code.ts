@@ -17,10 +17,8 @@ function openUi() {
   figma.ui.onmessage = async (message: UiMessage) => {
     try {
       if (message.type === "ready") {
-        const profile = figma.root.documentColorProfile
         post({
           type: "init",
-          colorProfile: profile === "DISPLAY_P3" ? "DISPLAY_P3" : "SRGB",
           overrides: loadOverrides(),
           language: await loadLanguage(),
         })
