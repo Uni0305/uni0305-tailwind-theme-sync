@@ -333,3 +333,156 @@ describe("buildFigmaSpec aliases and dark values", () => {
     expect(find("--color-accent")).not.toHaveProperty("dark")
   })
 })
+
+describe("buildFigmaSpec unconvertedKeys", () => {
+  it("is empty when every token converts", () => {
+    expect(buildFigmaSpec(parseThemeTokens(themeCss)).unconvertedKeys).toEqual(
+      []
+    )
+  })
+
+  it("names the key a color would have had if its value converted", () => {
+    const spec = buildFigmaSpec(
+      new Map([
+        ["--color-brand", "not-a-color"],
+        ["--color-ok", "#ffffff"],
+      ])
+    )
+
+    expect(spec.unconvertedKeys).toEqual(["--color-brand"])
+  })
+
+  it("names every step a broken --spacing would have produced", () => {
+    const spec = buildFigmaSpec(new Map([["--spacing", "wide"]]))
+
+    expect(spec.unconvertedKeys).toHaveLength(35)
+    expect(spec.unconvertedKeys).toContain("--spacing*0.5")
+    expect(spec.unconvertedKeys).toContain("--spacing*px")
+    expect(spec.unconvertedKeys).not.toContain("--spacing")
+    expect(spec.skipped).toEqual(["--spacing"])
+  })
+
+  it("names length and typography tokens that fail", () => {
+    const spec = buildFigmaSpec(
+      new Map([
+        ["--radius-md", "round"],
+        ["--font-weight-bold", "heavy"],
+        ["--tracking-tight", "tight"],
+        ["--radius-ok", "4px"],
+      ])
+    )
+
+    expect(spec.unconvertedKeys).toEqual([
+      "--radius-md",
+      "--font-weight-bold",
+      "--tracking-tight",
+    ])
+  })
+
+  it("names an effect style whose shadow does not parse", () => {
+    const spec = buildFigmaSpec(new Map([["--shadow-brand", "glow"]]))
+
+    expect(spec.unconvertedKeys).toEqual(["--shadow-brand"])
+  })
+
+  it("names the variable and both styles of a blur that is not in pixels", () => {
+    const spec = buildFigmaSpec(new Map([["--blur-soft", "foggy"]]))
+
+    expect(spec.unconvertedKeys).toEqual([
+      "--blur-soft",
+      "--blur-soft@layer",
+      "--blur-soft@backdrop",
+    ])
+  })
+
+  describe("text styles", () => {
+    const base: [string, string][] = [
+      ["--font-sans", "Inter"],
+      ["--font-weight-normal", "400"],
+      ["--font-weight-bold", "700"],
+      ["--text-sm", "14px"],
+      ["--text-lg", "18px"],
+    ]
+    const build = (
+      changes: Record<string, string>,
+      options: Parameters<typeof buildFigmaSpec>[1] = {}
+    ) =>
+      buildFigmaSpec(
+        new Map(base.map(([prop, value]) => [prop, changes[prop] ?? value])),
+        options
+      )
+    const textKeys = (keys: string[]) =>
+      keys.filter((key) => key.startsWith("text:")).sort()
+
+    it("names the styles a size that fails would have had", () => {
+      const spec = build({ "--text-sm": "big" })
+
+      expect(spec.unconvertedKeys).toContain("--text-sm")
+      expect(textKeys(spec.unconvertedKeys)).toEqual([
+        "text:sans/sm/bold",
+        "text:sans/sm/normal",
+      ])
+      expect(spec.textStyles.map((s) => s.key).sort()).toEqual([
+        "text:sans/lg/bold",
+        "text:sans/lg/normal",
+      ])
+    })
+
+    it("names the styles a weight that fails would have had", () => {
+      const spec = build({ "--font-weight-bold": "heavy" })
+
+      expect(textKeys(spec.unconvertedKeys)).toEqual([
+        "text:sans/lg/bold",
+        "text:sans/sm/bold",
+      ])
+    })
+
+    it("names each missing combination once when both fail", () => {
+      const spec = build({ "--text-sm": "big", "--font-weight-bold": "heavy" })
+
+      expect(textKeys(spec.unconvertedKeys)).toEqual([
+        "text:sans/lg/bold",
+        "text:sans/sm/bold",
+        "text:sans/sm/normal",
+      ])
+    })
+
+    it("covers every font slot that gets text styles", () => {
+      const tokens = new Map(base)
+      tokens.set("--font-mono", "Roboto Mono")
+      tokens.set("--text-sm", "big")
+      const spec = buildFigmaSpec(tokens, { textStyleSlots: ["sans", "mono"] })
+
+      expect(textKeys(spec.unconvertedKeys)).toEqual([
+        "text:mono/sm/bold",
+        "text:mono/sm/normal",
+        "text:sans/sm/bold",
+        "text:sans/sm/normal",
+      ])
+    })
+
+    it("does not mistake a failing text shadow for a text size", () => {
+      const spec = buildFigmaSpec(
+        new Map([...base, ["--text-shadow-soft", "glow"]])
+      )
+
+      expect(spec.unconvertedKeys).toEqual(["--text-shadow-soft"])
+    })
+
+    it("names no styles for a line height that fails, since they still exist", () => {
+      const spec = build({})
+      const broken = buildFigmaSpec(
+        new Map([...base, ["--text-sm--line-height", "tall"]])
+      )
+
+      expect(spec.unconvertedKeys).toEqual([])
+      expect(broken.unconvertedKeys).toEqual(["--text-sm--line-height"])
+    })
+
+    it("names no styles when there is no font to put them in", () => {
+      const spec = buildFigmaSpec(new Map([["--text-sm", "big"]]))
+
+      expect(spec.unconvertedKeys).toEqual(["--text-sm"])
+    })
+  })
+})

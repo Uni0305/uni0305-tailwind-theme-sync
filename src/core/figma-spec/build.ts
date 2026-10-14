@@ -82,6 +82,11 @@ export type FigmaSpec = {
   effectStyles: EffectStyleSpec[]
   /** Tokens that could not be converted, keyed by CSS custom property. */
   skipped: string[]
+  /**
+   * Keys the spec would have had if every token converted. Whatever the
+   * file already holds under one of them is left alone, not deleted.
+   */
+  unconvertedKeys: string[]
 }
 
 export type BuildOptions = {
@@ -154,6 +159,11 @@ export function colorVariableName(prop: string) {
   const match = /^(.+)-(\d+)$/.exec(rest)
 
   return match ? `${match[1]}/${match[2]}` : rest
+}
+
+/** Spec key of one step of the spacing scale. */
+function spacingKey(step: string) {
+  return `--spacing*${step}`
 }
 
 /** Variable names avoid dots, so the `0.5` step is written `0_5`. */
@@ -358,7 +368,7 @@ function spacingVariables(raw: string): VariableSpec[] | null {
   }
 
   return SPACING_STEPS.map((step) => ({
-    key: `--spacing*${step}`,
+    key: spacingKey(step),
     name: spacingVariableName(step),
     type: "FLOAT",
     value: step === "px" ? 1 : round(base * Number(step)),
@@ -369,7 +379,9 @@ function spacingVariables(raw: string): VariableSpec[] | null {
 
 function textStyles(
   typography: VariableSpec[],
-  slots: string[]
+  slots: string[],
+  skipped: string[],
+  unconvertedKeys: string[]
 ): TextStyleSpec[] {
   const byKey = new Map(typography.map((v) => [v.key, v]))
   const number = (key: string) => {
@@ -413,6 +425,45 @@ function textStyles(
     }
   }
 
+  // A size or weight that failed leaves holes in the grid of styles; the
+  // styles that would have filled them are not deleted if they exist.
+  const failed = (prefix: string, accept: (rest: string) => boolean) =>
+    skipped.flatMap((prop) =>
+      prop.startsWith(prefix) && accept(prop.slice(prefix.length))
+        ? [prop.slice(prefix.length)]
+        : []
+    )
+  const failedSizes = failed(
+    "--text-",
+    (rest) => !rest.includes("--") && !rest.startsWith("shadow-")
+  )
+  const failedWeights = failed("--font-weight-", () => true)
+  if (failedSizes.length > 0 || failedWeights.length > 0) {
+    const made = new Set(styles.map((style) => style.key))
+    const sizeNames = [
+      ...sizes.map((size) => size.key.slice("--text-".length)),
+      ...failedSizes,
+    ]
+    const weightNames = [
+      ...weights.map((weight) => weight.key.slice("--font-weight-".length)),
+      ...failedWeights,
+    ]
+
+    for (const slot of slots) {
+      if (byKey.get(`--font-${slot}`)?.type !== "STRING") {
+        continue
+      }
+      for (const size of sizeNames) {
+        for (const weight of weightNames) {
+          const key = `text:${slot}/${size}/${weight}`
+          if (!made.has(key)) {
+            unconvertedKeys.push(key)
+          }
+        }
+      }
+    }
+  }
+
   return styles
 }
 
@@ -426,7 +477,8 @@ const SHADOW_NAMESPACES = [
 
 function effectStyles(
   tokens: ThemeTokens,
-  skipped: string[]
+  skipped: string[],
+  unconvertedKeys: string[]
 ): EffectStyleSpec[] {
   const styles: EffectStyleSpec[] = []
 
@@ -440,6 +492,7 @@ function effectStyles(
       })
       if (!effects) {
         skipped.push(prop)
+        unconvertedKeys.push(prop)
         continue
       }
 
@@ -451,6 +504,8 @@ function effectStyles(
     if (prop.startsWith("--blur-")) {
       const radius = pixels(raw)
       if (radius === null) {
+        // The `--blur-*` variable already reported it as skipped.
+        unconvertedKeys.push(`${prop}@layer`, `${prop}@backdrop`)
         continue
       }
 
@@ -483,6 +538,7 @@ export function buildFigmaSpec(
     Size: [],
   }
   const skipped: string[] = []
+  const unconvertedKeys: string[] = []
 
   for (const [prop, raw] of tokens) {
     if (prop === "--spacing") {
@@ -491,6 +547,7 @@ export function buildFigmaSpec(
         variables.Size.push(...spacing)
       } else {
         skipped.push(prop)
+        unconvertedKeys.push(...SPACING_STEPS.map(spacingKey))
       }
       continue
     }
@@ -498,6 +555,7 @@ export function buildFigmaSpec(
     const converted = convertToken(prop, raw, tokens, options)
     if (converted === "skipped") {
       skipped.push(prop)
+      unconvertedKeys.push(prop)
     } else if (converted) {
       variables[converted.collection].push(converted.variable)
     }
@@ -510,9 +568,12 @@ export function buildFigmaSpec(
     })),
     textStyles: textStyles(
       variables.Typography,
-      options.textStyleSlots ?? ["sans"]
+      options.textStyleSlots ?? ["sans"],
+      skipped,
+      unconvertedKeys
     ),
-    effectStyles: effectStyles(tokens, skipped),
+    effectStyles: effectStyles(tokens, skipped, unconvertedKeys),
     skipped,
+    unconvertedKeys,
   }
 }

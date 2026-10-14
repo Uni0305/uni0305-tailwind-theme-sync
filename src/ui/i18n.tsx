@@ -84,7 +84,8 @@ const en = {
   deletedHint:
     "Their tokens are no longer in the theme. Layers using them lose the binding.",
   orphans: "Left in the file",
-  orphansHint: "Unchecked for this apply, so they stay as they are.",
+  orphansHint:
+    "Unchecked for this apply, or not convertible right now, so they stay as they are.",
   resetTheme: "Reset theme",
   resetConfirm:
     "Discard every change and go back to Tailwind's defaults? Variables and styles for tokens you added are deleted the next time you apply.",
@@ -94,7 +95,8 @@ const en = {
   skipped: "Skipped",
   skippedHint: "Text styles whose font has no matching weight.",
   unconverted: "Not converted",
-  unconvertedHint: "Tokens whose values can't be turned into Figma values.",
+  unconvertedHint:
+    "Tokens whose values can't be turned into Figma values. Whatever the file already has for them stays.",
 }
 
 export type MessageKey = keyof typeof en
@@ -182,7 +184,8 @@ const ko: Record<MessageKey, string> = {
   deletedHint:
     "테마에서 빠진 토큰의 항목입니다. 이를 쓰던 레이어는 바인딩이 끊깁니다.",
   orphans: "파일에 남는 항목",
-  orphansHint: "이번 적용에서 체크 해제한 항목이라 그대로 둡니다.",
+  orphansHint:
+    "이번 적용에서 체크 해제했거나 지금은 변환할 수 없는 항목이라 그대로 둡니다.",
   resetTheme: "테마 초기화",
   resetConfirm:
     "모든 변경을 버리고 Tailwind 기본값으로 돌아갈까요? 추가했던 토큰의 변수와 스타일은 다음 적용 때 삭제됩니다.",
@@ -192,7 +195,8 @@ const ko: Record<MessageKey, string> = {
   skipped: "건너뜀",
   skippedHint: "폰트에 해당 굵기가 없는 Text 스타일입니다.",
   unconverted: "변환되지 않음",
-  unconvertedHint: "Figma 값으로 바꿀 수 없는 토큰입니다.",
+  unconvertedHint:
+    "Figma 값으로 바꿀 수 없는 토큰입니다. 파일에 이미 있는 항목은 그대로 둡니다.",
 }
 
 const MESSAGES: Record<Language, Record<MessageKey, string>> = { en, ko }

@@ -82,6 +82,7 @@ const spec: FigmaSpec = {
     effect("--blur-sm@backdrop", "backdrop-blur/sm"),
   ],
   skipped: ["--color-bad"],
+  unconvertedKeys: ["--color-bad"],
 }
 
 const keysOf = (s: FigmaSpec) => [
@@ -143,6 +144,10 @@ describe("selectGroups selection", () => {
     expect(result.selectedCount).toBe(keysOf(spec).length)
   })
 
+  it("always retains what failed to convert, even with nothing excluded", () => {
+    expect(selectGroups(spec, new Set()).retained).toEqual(["--color-bad"])
+  })
+
   it("drops excluded groups from the spec and retains their keys", () => {
     const result = selectGroups(
       spec,
@@ -159,6 +164,7 @@ describe("selectGroups selection", () => {
     ])
     expect([...result.retained].sort()).toEqual(
       [
+        "--color-bad",
         "--color-red-500",
         "--color-red-600",
         "--spacing*4",
@@ -192,6 +198,7 @@ describe("selectGroups selection", () => {
     const result = selectGroups(spec, new Set(["Color/red"]))
 
     expect(result.spec.skipped).toEqual(["--color-bad"])
+    expect(result.spec.unconvertedKeys).toEqual(["--color-bad"])
   })
 })
 
@@ -219,6 +226,34 @@ describe("selectGroups over a whole theme", () => {
       expect(kept.filter((key) => held.has(key))).toEqual([])
       expect(result.selectedCount).toBe(kept.length)
     }
+  })
+})
+
+describe("selectGroups over a theme with a broken value", () => {
+  const broken = buildFigmaSpec(
+    new Map([
+      ["--color-red-500", "#f00"],
+      ["--color-red-600", "not-a-color"],
+      ["--radius-md", "4px"],
+      ["--radius-lg", "round"],
+      ["--spacing", "wide"],
+    ])
+  )
+
+  it("retains what failed next to what an unchecked group holds", () => {
+    const result = selectGroups(broken, new Set(["Color/red"]))
+    const kept = keysOf(result.spec)
+
+    expect(result.retained).toContain("--color-red-500")
+    expect(result.retained).toContain("--color-red-600")
+    expect(result.retained).toContain("--radius-lg")
+    expect(result.retained).toContain("--spacing*4")
+    expect(kept).toEqual(["--radius-md"])
+    expect(kept.filter((key) => result.retained.includes(key))).toEqual([])
+  })
+
+  it("does not count what failed as selected", () => {
+    expect(selectGroups(broken, new Set()).selectedCount).toBe(2)
   })
 })
 

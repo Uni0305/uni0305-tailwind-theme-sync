@@ -19,7 +19,8 @@ export type Selection = {
   spec: FigmaSpec
   /**
    * Keys the sync must leave alone: the items of excluded groups, which are
-   * still part of the theme.
+   * still part of the theme, and whatever failed to convert, which is not
+   * gone but cannot be written right now.
    */
   retained: string[]
   /** Items in the groups that stay checked. */
@@ -103,7 +104,7 @@ export function selectGroups(
   return {
     groups: [...groups.values()],
     spec: excluded.size === 0 ? spec : narrowed,
-    retained,
+    retained: [...retained, ...spec.unconvertedKeys],
     selectedCount,
   }
 }
