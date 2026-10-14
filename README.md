@@ -17,6 +17,8 @@ duplicating it.
   `tailwindcss` package, so it follows the version in `package.json`.
 - **Variables and styles.** Writes three variable collections (Color,
   Typography, Size), text styles, and effect styles for shadows and blurs.
+  Size and Typography variables are limited to the fields they fit, so a radius
+  only shows up for corner radius and a font size only for font size.
 - **Dark values.** Colors can carry a Dark value, written as a second mode.
   Colors are converted to the document's profile (sRGB or Display P3).
 - **CSS in and out.** Imports `@theme`, `:root`, and `.dark` blocks, follows

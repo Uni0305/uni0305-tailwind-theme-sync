@@ -59,6 +59,7 @@ Every variable and style the plugin writes carries plugin data (`src/plugin/keys
 
 - `TOKEN_KEY` holds the spec `key` (usually the CSS custom property, e.g. `--color-red-500`; spacing steps use `--spacing*4`, blurs use `--blur-sm@layer` / `@backdrop`, text styles use `text:sans/sm/bold`). Items are matched by this key first, then by name, so renames in the spec carry over.
 - `APPLIED_KEY` holds a signature of the values last written. If the current value differs from it, someone edited the item by hand and the item is reported in `overwritten`.
+- `VariableSpec.scopes` narrows the fields a Size or Typography variable is offered in (`build.ts`: spacing is `GAP` + `WIDTH_HEIGHT`, radius `CORNER_RADIUS`, and so on; Color has none). Scopes are not part of the `APPLIED_KEY` signature. An existing variable is rescoped, and counted as `updated`, only while it is still on `ALL_SCOPES`, so a scope set by hand survives.
 
 `sweep()` handles items that have a `TOKEN_KEY` but are absent from the spec: keys in `retained` (unchecked groups) are left as `orphans`, everything else is deleted. Items without a `TOKEN_KEY` are never touched. Passing the wrong `retained` set therefore deletes user content.
 
