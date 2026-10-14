@@ -88,3 +88,17 @@ Every variable and style the plugin writes carries plugin data (`src/plugin/keys
 - Prettier: no semicolons, double quotes, 80 columns, `es5` trailing commas.
 - Tests sit next to the code as `*.test.ts` and cover `src/core/` only. `src/plugin/` has no tests because it needs the Figma runtime.
 - `src/components/ui/` holds shadcn-generated components; add more with the shadcn CLI (`components.json`) and keep app-specific components in `src/ui/`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `Uni0305/uni0305-tailwind-theme-sync`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use their default label names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.
