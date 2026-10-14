@@ -168,6 +168,27 @@ describe("buildFigmaSpec typography and size", () => {
     expect(find("--blur-sm")?.value).toBe(8)
   })
 
+  it("limits each variable to the fields it fits", () => {
+    const scopes = (key: string) => find(key)?.scopes
+
+    expect(scopes("--spacing*4")).toEqual(["GAP", "WIDTH_HEIGHT"])
+    expect(scopes("--spacing*px")).toEqual(["GAP", "WIDTH_HEIGHT"])
+    expect(scopes("--radius-md")).toEqual(["CORNER_RADIUS"])
+    expect(scopes("--breakpoint-sm")).toEqual(["WIDTH_HEIGHT"])
+    expect(scopes("--container-3xs")).toEqual(["WIDTH_HEIGHT"])
+    expect(scopes("--blur-sm")).toEqual(["EFFECT_FLOAT"])
+    expect(scopes("--font-sans")).toEqual(["FONT_FAMILY"])
+    expect(scopes("--font-weight-semibold")).toEqual(["FONT_WEIGHT"])
+    expect(scopes("--text-sm")).toEqual(["FONT_SIZE"])
+    expect(scopes("--text-sm--line-height")).toEqual(["LINE_HEIGHT"])
+    expect(scopes("--leading-tight")).toEqual(["LINE_HEIGHT"])
+    expect(scopes("--tracking-tight")).toEqual(["LETTER_SPACING"])
+  })
+
+  it("leaves color variables on Figma's default scope", () => {
+    expect(find("--color-red-500")).not.toHaveProperty("scopes")
+  })
+
   it("reports tokens whose values cannot be converted", () => {
     const broken = buildFigmaSpec(
       new Map([
