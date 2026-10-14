@@ -93,6 +93,11 @@ export function SummaryView({
         names={summary.overwritten}
       />
       <NameList
+        title={applied ? t("renamed") : t("toRename")}
+        hint={t("renamedHint")}
+        names={summary.renamed}
+      />
+      <NameList
         title={applied ? t("deleted") : t("toDelete")}
         hint={t("deletedHint")}
         names={summary.deleted}

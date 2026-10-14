@@ -39,6 +39,7 @@ const en = {
   duplicateName: "This token already exists",
   reset: "Reset to default",
   remove: "Remove",
+  rename: "Rename",
   modified: "Modified",
   added: "Added",
   layers: "{n} layer(s)",
@@ -83,6 +84,9 @@ const en = {
   deleted: "Deleted",
   deletedHint:
     "Their tokens are no longer in the theme. Layers using them lose the binding.",
+  toRename: "To rename",
+  renamed: "Renamed",
+  renamedHint: "Kept in place under the new name, so layers stay bound.",
   orphans: "Left in the file",
   orphansHint:
     "Unchecked for this apply, or not convertible right now, so they stay as they are.",
@@ -138,6 +142,7 @@ const ko: Record<MessageKey, string> = {
   duplicateName: "이미 있는 토큰입니다",
   reset: "기본값으로 되돌리기",
   remove: "삭제",
+  rename: "이름 변경",
   modified: "수정됨",
   added: "추가됨",
   layers: "{n}개 레이어",
@@ -183,6 +188,9 @@ const ko: Record<MessageKey, string> = {
   deleted: "삭제됨",
   deletedHint:
     "테마에서 빠진 토큰의 항목입니다. 이를 쓰던 레이어는 바인딩이 끊깁니다.",
+  toRename: "이름 변경 예정",
+  renamed: "이름 변경됨",
+  renamedHint: "기존 항목에 새 이름만 붙이므로 레이어 바인딩이 유지됩니다.",
   orphans: "파일에 남는 항목",
   orphansHint:
     "이번 적용에서 체크 해제했거나 지금은 변환할 수 없는 항목이라 그대로 둡니다.",

@@ -8,13 +8,16 @@ import type { ThemeTokens } from "@/core/css/parse"
 import {
   isValidTokenName,
   listFontSlots,
+  fontSlotRenameIssue,
   removeFontSlot,
+  renameFontSlot,
   setFontFamily,
   setTextStyleSlot,
 } from "@/core/theme/model"
 import type { Overrides } from "@/core/theme/model"
 import { FontPicker } from "@/ui/font-picker"
 import { useTranslate } from "@/ui/i18n"
+import { RenameField } from "@/ui/rename-field"
 
 type FontSlotsProps = {
   defaults: ThemeTokens
@@ -54,9 +57,25 @@ export function FontSlots({
         {slots.map((row) => (
           <li key={row.slot} className="group/row flex flex-col">
             <div className="flex h-7 items-center gap-2">
-              <span className="w-24 shrink-0 truncate font-mono">
-                --font-{row.slot}
-              </span>
+              {row.custom ? (
+                <RenameField
+                  prefix="--font-"
+                  name={row.slot}
+                  check={(name) =>
+                    fontSlotRenameIssue(overrides, defaults, row.slot, name)
+                  }
+                  onRename={(name) =>
+                    onChange(
+                      renameFontSlot(overrides, defaults, row.slot, name)
+                    )
+                  }
+                  className="w-24 shrink-0"
+                />
+              ) : (
+                <span className="w-24 shrink-0 truncate font-mono">
+                  --font-{row.slot}
+                </span>
+              )}
               <FontPicker
                 key={row.family}
                 value={row.family}

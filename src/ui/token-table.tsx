@@ -1,4 +1,11 @@
-import { ChevronRight, Plus, RotateCcw, Search, Trash2 } from "lucide-react"
+import {
+  ChevronRight,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+} from "lucide-react"
 import { useState } from "react"
 import type { ReactNode } from "react"
 
@@ -27,16 +34,23 @@ import {
   groupColorRows,
   isValidTokenName,
   listTokens,
+  namespaceOf,
+  paletteRenameIssue,
   removeToken,
   removeTokens,
+  renamePalette,
+  renameToken,
   resetToken,
   setDarkEnabled,
   setDarkValue,
   setToken,
   TAB_NAMESPACES,
+  tokenName,
+  tokenRenameIssue,
 } from "@/core/theme/model"
 import type { Overrides, TokenRow, TokenTab } from "@/core/theme/model"
 import { useTranslate } from "@/ui/i18n"
+import { RenameField, RenameInput } from "@/ui/rename-field"
 import type { TokenPreview } from "@/ui/token-preview"
 
 type TokenTableProps = {
@@ -136,6 +150,11 @@ function Row({
       : result.kind === "layers"
         ? `→ ${t("layers", { n: result.count })}`
         : undefined
+  // Added tokens can be renamed; sub-properties such as
+  // `--text-x--line-height` follow their token instead.
+  const namespace = namespaceOf(row.prop)
+  const renameable =
+    row.state === "custom" && isValidTokenName(tokenName(row.prop))
 
   return (
     <li
@@ -162,10 +181,29 @@ function Row({
           style={{ backgroundColor: row.value }}
         />
       )}
-      <span title={row.prop} className="truncate font-mono">
-        {row.prop}
-        {stateLabel && <span className="sr-only"> ({stateLabel})</span>}
-      </span>
+      {renameable ? (
+        <span className="flex min-w-0">
+          <RenameField
+            prefix={namespace}
+            name={tokenName(row.prop)}
+            check={(name) =>
+              tokenRenameIssue(overrides, defaults, row.prop, namespace + name)
+            }
+            onRename={(name) =>
+              onChange(
+                renameToken(overrides, defaults, row.prop, namespace + name)
+              )
+            }
+            className="flex-1"
+          />
+          {stateLabel && <span className="sr-only"> ({stateLabel})</span>}
+        </span>
+      ) : (
+        <span title={row.prop} className="truncate font-mono">
+          {row.prop}
+          {stateLabel && <span className="sr-only"> ({stateLabel})</span>}
+        </span>
+      )}
       <ValueInput
         value={row.value}
         invalid={result.kind === "invalid"}
@@ -323,6 +361,8 @@ export function TokenTable(props: TokenTableProps) {
   const [filter, setFilter] = useState("")
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
+  /** The palette whose name is being edited. */
+  const [renaming, setRenaming] = useState<string | null>(null)
   const { tab, defaults, overrides, onChange, children } = props
 
   const query = filter.trim().toLowerCase()
@@ -395,6 +435,11 @@ export function TokenTable(props: TokenTableProps) {
                 (row) => row.state !== "default"
               ).length
               const label = group.name ?? t("otherColors")
+              const palette = group.name
+              // Only a palette made entirely of added tokens can be renamed.
+              const renameable =
+                palette !== null &&
+                group.rows.every((row) => row.state === "custom")
 
               return (
                 <Collapsible
@@ -411,30 +456,61 @@ export function TokenTable(props: TokenTableProps) {
                     setOpen(ids)
                   }}
                 >
-                  <div className="group/row flex h-7 items-center gap-1.5">
-                    <CollapsibleTrigger className="group/trigger flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-                      <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform group-data-panel-open/trigger:rotate-90" />
-                      <span className="w-20 shrink-0 truncate font-medium">
-                        {label}
-                      </span>
-                      <span className="flex h-3.5 flex-1 overflow-hidden rounded-sm outline outline-1 -outline-offset-1 outline-foreground/10">
-                        {group.rows.map((row) => (
-                          <span
-                            key={row.prop}
-                            className="flex-1"
-                            style={{ backgroundColor: row.value }}
-                          />
-                        ))}
-                      </span>
-                      <span
-                        className={`w-16 shrink-0 text-right tabular-nums ${changed > 0 ? "text-warning" : "text-muted-foreground"}`}
-                      >
-                        {changed > 0
-                          ? t("changedCount", { n: changed })
-                          : group.rows.length}
-                      </span>
-                    </CollapsibleTrigger>
-                    <span className={`w-6 shrink-0 ${ROW_ACTIONS}`}>
+                  <div className="group/row flex min-h-7 items-center gap-1.5">
+                    {renameable && renaming === palette ? (
+                      <RenameInput
+                        prefix="--color-"
+                        name={palette}
+                        check={(name) =>
+                          paletteRenameIssue(overrides, defaults, palette, name)
+                        }
+                        onRename={(name) => {
+                          if (open.has(palette)) {
+                            setOpen(new Set(open).add(name))
+                          }
+                          onChange(
+                            renamePalette(overrides, defaults, palette, name)
+                          )
+                        }}
+                        onDone={() => setRenaming(null)}
+                        className="flex-1 py-0.5"
+                      />
+                    ) : (
+                      <CollapsibleTrigger className="group/trigger flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                        <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform group-data-panel-open/trigger:rotate-90" />
+                        <span className="w-20 shrink-0 truncate font-medium">
+                          {label}
+                        </span>
+                        <span className="flex h-3.5 flex-1 overflow-hidden rounded-sm outline outline-1 -outline-offset-1 outline-foreground/10">
+                          {group.rows.map((row) => (
+                            <span
+                              key={row.prop}
+                              className="flex-1"
+                              style={{ backgroundColor: row.value }}
+                            />
+                          ))}
+                        </span>
+                        <span
+                          className={`w-16 shrink-0 text-right tabular-nums ${changed > 0 ? "text-warning" : "text-muted-foreground"}`}
+                        >
+                          {changed > 0
+                            ? t("changedCount", { n: changed })
+                            : group.rows.length}
+                        </span>
+                      </CollapsibleTrigger>
+                    )}
+                    <span className={`w-12 shrink-0 ${ROW_ACTIONS}`}>
+                      {renameable && (
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          title={`${t("rename")}: ${label}`}
+                          aria-label={`${t("rename")}: ${label}`}
+                          onClick={() => setRenaming(palette)}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon-xs"
