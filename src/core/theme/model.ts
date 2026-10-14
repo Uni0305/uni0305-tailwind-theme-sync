@@ -365,13 +365,15 @@ export function setDarkEnabled(
 
 /**
  * How many theme entries differ from Tailwind's defaults. Apply settings
- * (unchecked groups, text style slots) are not part of the theme.
+ * (unchecked groups, text style slots) are not part of the theme, and dark
+ * values count only while dark mode is on, since neither the export nor an
+ * apply uses them otherwise.
  */
 export function countThemeChanges(overrides: Overrides) {
   return (
     Object.keys(overrides.values).length +
     overrides.removed.length +
-    Object.keys(overrides.dark).length +
+    (overrides.darkEnabled ? Object.keys(overrides.dark).length : 0) +
     Object.keys(overrides.fontFamilies).length
   )
 }

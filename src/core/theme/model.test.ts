@@ -271,6 +271,13 @@ describe("countThemeChanges", () => {
     expect(countThemeChanges(overrides)).toBe(4)
   })
 
+  it("counts dark values only while dark mode is on", () => {
+    const off = setDarkValue(EMPTY_OVERRIDES, "--color-red-500", "maroon")
+
+    expect(countThemeChanges(off)).toBe(0)
+    expect(countThemeChanges(setDarkEnabled(off, true))).toBe(1)
+  })
+
   it("leaves apply settings out", () => {
     const settings = setTextStyleSlot(
       setGroupsIncluded(EMPTY_OVERRIDES, ["Color/red"], false),
