@@ -87,6 +87,11 @@ export type FigmaSpec = {
    * file already holds under one of them is left alone, not deleted.
    */
   unconvertedKeys: string[]
+  /**
+   * Keys that renamed tokens' items had before, mapped to the keys they have
+   * now, so the sync can find what the file still holds under an old key.
+   */
+  renamed: Record<string, string>
 }
 
 export type BuildOptions = {
@@ -96,6 +101,8 @@ export type BuildOptions = {
   dark?: Record<string, string>
   /** Font slots that get a full set of text styles. Defaults to `sans`. */
   textStyleSlots?: string[]
+  /** Earlier names of renamed tokens, by CSS custom property. */
+  renames?: Record<string, string[]>
 }
 
 /** Tailwind v3's spacing scale, as multiples of `--spacing`. */
@@ -528,6 +535,64 @@ function effectStyles(
   return styles
 }
 
+/** The keys an item had under the earlier names of the tokens it comes from. */
+function previousKeys(key: string, renames: Record<string, string[]>) {
+  const names = (prefix: string, name: string) => [
+    name,
+    ...(renames[prefix + name] ?? []).map((prop) => prop.slice(prefix.length)),
+  ]
+
+  // A text style is named after its font slot, size and weight, any of
+  // which may have been renamed.
+  const text = /^text:([^/]+)\/([^/]+)\/([^/]+)$/.exec(key)
+  if (text) {
+    const keys: string[] = []
+    for (const slot of names("--font-", text[1])) {
+      for (const size of names("--text-", text[2])) {
+        for (const weight of names("--font-weight-", text[3])) {
+          keys.push(`text:${slot}/${size}/${weight}`)
+        }
+      }
+    }
+
+    return keys.slice(1)
+  }
+
+  const [prop, suffix] = key.split("@")
+  const previous = renames[prop] ?? []
+
+  return suffix === undefined
+    ? previous
+    : previous.map((old) => `${old}@${suffix}`)
+}
+
+/**
+ * Maps earlier keys to current ones. A key some item still uses, or one that
+ * two items could have had, is left out, so it cannot take the wrong item.
+ */
+function renamedKeys(keys: string[], renames: Record<string, string[]>) {
+  const current = new Set(keys)
+  const found = new Map<string, string | null>()
+
+  for (const key of keys) {
+    for (const previous of previousKeys(key, renames)) {
+      if (!current.has(previous)) {
+        const other = found.get(previous)
+        found.set(previous, other === undefined || other === key ? key : null)
+      }
+    }
+  }
+
+  const renamed: Record<string, string> = {}
+  for (const [previous, key] of found) {
+    if (key !== null) {
+      renamed[previous] = key
+    }
+  }
+
+  return renamed
+}
+
 export function buildFigmaSpec(
   tokens: ThemeTokens,
   options: BuildOptions = {}
@@ -561,19 +626,30 @@ export function buildFigmaSpec(
     }
   }
 
+  const typography = textStyles(
+    variables.Typography,
+    options.textStyleSlots ?? ["sans"],
+    skipped,
+    unconvertedKeys
+  )
+  const effects = effectStyles(tokens, skipped, unconvertedKeys)
+  const keys = [
+    ...variables.Color,
+    ...variables.Typography,
+    ...variables.Size,
+    ...typography,
+    ...effects,
+  ].map((item) => item.key)
+
   return {
     collections: (["Color", "Typography", "Size"] as const).map((name) => ({
       name,
       variables: variables[name],
     })),
-    textStyles: textStyles(
-      variables.Typography,
-      options.textStyleSlots ?? ["sans"],
-      skipped,
-      unconvertedKeys
-    ),
-    effectStyles: effectStyles(tokens, skipped, unconvertedKeys),
+    textStyles: typography,
+    effectStyles: effects,
     skipped,
     unconvertedKeys,
+    renamed: renamedKeys([...keys, ...unconvertedKeys], options.renames ?? {}),
   }
 }

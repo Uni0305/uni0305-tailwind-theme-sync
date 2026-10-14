@@ -83,6 +83,7 @@ const spec: FigmaSpec = {
   ],
   skipped: ["--color-bad"],
   unconvertedKeys: ["--color-bad"],
+  renamed: {},
 }
 
 const keysOf = (s: FigmaSpec) => [
@@ -199,6 +200,26 @@ describe("selectGroups selection", () => {
 
     expect(result.spec.skipped).toEqual(["--color-bad"])
     expect(result.spec.unconvertedKeys).toEqual(["--color-bad"])
+  })
+})
+
+describe("selectGroups renamed", () => {
+  it("retains the earlier keys of retained items", () => {
+    const result = selectGroups(
+      {
+        ...spec,
+        renamed: {
+          "--color-crimson-500": "--color-red-500",
+          "--color-worse": "--color-bad",
+          "--radius-x": "--radius-md",
+        },
+      },
+      new Set(["Color/red"])
+    )
+
+    expect(result.retained).toContain("--color-crimson-500")
+    expect(result.retained).toContain("--color-worse")
+    expect(result.retained).not.toContain("--radius-x")
   })
 })
 

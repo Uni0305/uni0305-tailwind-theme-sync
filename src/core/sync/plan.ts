@@ -149,8 +149,45 @@ type PlanContext = {
   /** The `held` entries something in the plan actually points at. */
   references: Record<string, string>
   keyOfId: Map<string, string>
+  /** Earlier keys of renamed tokens' items, to their current keys. */
+  renamed: Readonly<Record<string, string>>
   summary: SyncSummary
   ops: Op[]
+}
+
+/** The key an item in the file stands for now, after any rename. */
+function currentKey(renamed: Readonly<Record<string, string>>, key: string) {
+  return renamed[key] ?? key
+}
+
+/**
+ * The item in the file a spec item writes to: the one under its key, else
+ * the one under an earlier key of it, else one with its name.
+ */
+function findExisting<T extends { key: string; name: string }>(
+  items: T[],
+  spec: { key: string; name: string },
+  renamed: Readonly<Record<string, string>>
+) {
+  return (
+    items.find((item) => item.key === spec.key) ??
+    items.find((item) => item.key && renamed[item.key] === spec.key) ??
+    items.find((item) => item.name === spec.name)
+  )
+}
+
+/** Lists an item found under an earlier key, which the update rekeys. */
+function noteRename(
+  existing: { key: string; name: string },
+  spec: { key: string; name: string },
+  { renamed, summary }: PlanContext
+) {
+  const rekeyed = !!existing.key && renamed[existing.key] === spec.key
+  if (rekeyed) {
+    summary.renamed.push(`${existing.name} → ${spec.name}`)
+  }
+
+  return rekeyed
 }
 
 /**
@@ -199,19 +236,28 @@ function sweep(
 
 /**
  * Replaces the variable ids in a stored signature with the token keys they
- * stood for, since older applies wrote ids.
+ * stood for, since older applies wrote ids, and earlier keys of renamed
+ * tokens with their current ones.
  */
-function withKeys(applied: string, keyOfId: Map<string, string>) {
+function withKeys(
+  applied: string,
+  keyOfId: Map<string, string>,
+  renamed: Readonly<Record<string, string>>
+) {
   let result = applied.replace(
     /alias:([^|]+)/g,
-    (_, id: string) => `alias:${keyOfId.get(id) ?? id}`
+    (_, id: string) => `alias:${keyOfId.get(id) ?? currentKey(renamed, id)}`
   )
   // Effect signatures quote the id of the variable a blur is bound to.
   for (const [id, key] of keyOfId) {
     result = result.split(`"${id}"`).join(`"${key}"`)
   }
 
-  return result
+  // Text and effect signatures quote the keys of their bound variables.
+  return result.replace(
+    /"(--[^"]+)"/g,
+    (_, key: string) => `"${currentKey(renamed, key)}"`
+  )
 }
 
 /**
@@ -220,13 +266,14 @@ function withKeys(applied: string, keyOfId: Map<string, string>) {
  */
 function normalizeVariableApplied(
   applied: string,
-  keyOfId: Map<string, string>
+  keyOfId: Map<string, string>,
+  renamed: Readonly<Record<string, string>>
 ) {
   if (!applied) {
     return ""
   }
 
-  const keyed = withKeys(applied, keyOfId)
+  const keyed = withKeys(applied, keyOfId, renamed)
 
   return keyed.includes("|") ? keyed : `${keyed}|${keyed}`
 }
@@ -281,14 +328,12 @@ function textSignature(
 }
 
 function planTextStyles(specs: TextStyleSpec[], ctx: PlanContext) {
-  const { snapshot, keyOfId, summary, ops } = ctx
+  const { snapshot, keyOfId, renamed, summary, ops } = ctx
   const resolveFont = createFontResolver(snapshot.fonts)
   const kept = new Set<string>()
 
   for (const spec of specs) {
-    const existing =
-      snapshot.textStyles.find((s) => s.key === spec.key) ??
-      snapshot.textStyles.find((s) => s.name === spec.name)
+    const existing = findExisting(snapshot.textStyles, spec, renamed)
     if (existing) {
       kept.add(existing.id)
     }
@@ -344,7 +389,8 @@ function planTextStyles(specs: TextStyleSpec[], ctx: PlanContext) {
       }
     }
 
-    const renamed = existing.name !== spec.name
+    const rekeyed = noteRename(existing, spec, ctx)
+    const named = existing.name !== spec.name
     const refonted =
       existing.font.family !== font.family || existing.font.style !== font.style
     const resized = existing.fontSize !== spec.fontSize
@@ -378,12 +424,12 @@ function planTextStyles(specs: TextStyleSpec[], ctx: PlanContext) {
       currentLineHeight,
       currentBound
     )
-    const applied = withKeys(existing.applied, keyOfId)
+    const applied = withKeys(existing.applied, keyOfId, renamed)
     if (now !== next && applied && applied !== now) {
       summary.overwritten.push(existing.name)
     }
 
-    if (renamed || refonted || resized || reheighted || rebound) {
+    if (rekeyed || named || refonted || resized || reheighted || rebound) {
       summary.updated += 1
     } else {
       summary.unchanged += 1
@@ -394,7 +440,7 @@ function planTextStyles(specs: TextStyleSpec[], ctx: PlanContext) {
       id: existing.id,
       key: spec.key,
       applied: next,
-      ...(renamed ? { name: spec.name } : {}),
+      ...(named ? { name: spec.name } : {}),
       ...(refonted ? { font } : {}),
       ...(resized ? { fontSize: spec.fontSize } : {}),
       ...(reheighted ? { lineHeight: spec.lineHeight } : {}),
@@ -447,13 +493,11 @@ function effectSignature(effects: EffectShape[]) {
 }
 
 function planEffectStyles(specs: EffectStyleSpec[], ctx: PlanContext) {
-  const { snapshot, keyOfId, summary, ops } = ctx
+  const { snapshot, keyOfId, renamed, summary, ops } = ctx
   const kept = new Set<string>()
 
   for (const spec of specs) {
-    const existing =
-      snapshot.effectStyles.find((s) => s.key === spec.key) ??
-      snapshot.effectStyles.find((s) => s.name === spec.name)
+    const existing = findExisting(snapshot.effectStyles, spec, renamed)
 
     // A blur is bound when its variable is in the file or will be created
     // by this run; otherwise it stays a plain radius.
@@ -500,14 +544,15 @@ function planEffectStyles(specs: EffectStyleSpec[], ctx: PlanContext) {
         }
       })
     )
-    const applied = withKeys(existing.applied, keyOfId)
-    const renamed = existing.name !== spec.name
+    const applied = withKeys(existing.applied, keyOfId, renamed)
+    const rekeyed = noteRename(existing, spec, ctx)
+    const named = existing.name !== spec.name
     const restyled = current !== next
 
     if (restyled && applied && applied !== current) {
       summary.overwritten.push(existing.name)
     }
-    if (renamed || restyled) {
+    if (rekeyed || named || restyled) {
       summary.updated += 1
     } else {
       summary.unchanged += 1
@@ -518,7 +563,7 @@ function planEffectStyles(specs: EffectStyleSpec[], ctx: PlanContext) {
       id: existing.id,
       key: spec.key,
       applied: next,
-      ...(renamed ? { name: spec.name } : {}),
+      ...(named ? { name: spec.name } : {}),
       ...(restyled ? { effects: spec.effects } : {}),
     })
   }
@@ -539,24 +584,25 @@ export function planSync(
     orphans: [],
     deleted: [],
     overwritten: [],
+    renamed: [],
     darkUnavailable: false,
   }
+  const { renamed } = spec
   const ops: Op[] = []
   const resolved = new Map<string, string | null>()
   const keyOfId = new Map(
-    snapshot.variables.filter((v) => v.key).map((v) => [v.id, v.key])
+    snapshot.variables
+      .filter((v) => v.key)
+      .map((v) => [v.id, currentKey(renamed, v.key)])
   )
   const specKeys = new Set(
     spec.collections.flatMap((c) => c.variables.map((v) => v.key))
   )
   const held = new Map<string, string>()
   for (const variable of snapshot.variables) {
-    if (
-      retained.has(variable.key) &&
-      !specKeys.has(variable.key) &&
-      !held.has(variable.key)
-    ) {
-      held.set(variable.key, variable.id)
+    const key = currentKey(renamed, variable.key)
+    if (retained.has(variable.key) && !specKeys.has(key) && !held.has(key)) {
+      held.set(key, variable.id)
     }
   }
   const ctx: PlanContext = {
@@ -566,6 +612,7 @@ export function planSync(
     held,
     references: {},
     keyOfId,
+    renamed,
     summary,
     ops,
   }
@@ -603,13 +650,21 @@ export function planSync(
       (v) => v.collectionId === existingCollection?.id
     )
     const byKey = new Map(inCollection.map((v) => [v.key, v]))
+    const byEarlierKey = new Map(
+      inCollection
+        .filter((v) => v.key && renamed[v.key])
+        .map((v) => [renamed[v.key], v])
+    )
     const byName = new Map(inCollection.map((v) => [v.name, v]))
     const modeId = existingCollection?.defaultModeId ?? ""
     const kept = new Set<string>()
     const planned = new Set(collection.variables.map((v) => v.key))
 
     for (const variable of orderForCreation(collection.variables)) {
-      const found = byKey.get(variable.key) ?? byName.get(variable.name)
+      const found =
+        byKey.get(variable.key) ??
+        byEarlierKey.get(variable.key) ??
+        byName.get(variable.name)
       const existing = found?.type === variable.type ? found : undefined
       const light: PlannedValue =
         variable.type === "COLOR" &&
@@ -654,7 +709,8 @@ export function planSync(
         ? valueSignature(existing.valuesByMode[darkMode.id], keyOfId)
         : currentLight
       const current = `${currentLight}|${currentDark}`
-      const renamed = existing.name !== variable.name
+      const rekeyed = noteRename(existing, variable, ctx)
+      const named = existing.name !== variable.name
       const revalued = current !== next
       const resyntaxed = existing.codeSyntax !== variable.codeSyntax
       // Only a variable still on Figma's default is narrowed; a scope someone
@@ -664,11 +720,15 @@ export function planSync(
         existing.scopes.length === 1 &&
         existing.scopes[0] === "ALL_SCOPES"
 
-      const applied = normalizeVariableApplied(existing.applied, keyOfId)
+      const applied = normalizeVariableApplied(
+        existing.applied,
+        keyOfId,
+        renamed
+      )
       if (revalued && applied && applied !== current) {
         summary.overwritten.push(existing.name)
       }
-      if (renamed || revalued || resyntaxed || rescoped) {
+      if (rekeyed || named || revalued || resyntaxed || rescoped) {
         summary.updated += 1
       } else {
         summary.unchanged += 1
@@ -681,7 +741,7 @@ export function planSync(
         key: variable.key,
         applied: next,
         appliedWithoutDark,
-        ...(renamed ? { name: variable.name } : {}),
+        ...(named ? { name: variable.name } : {}),
         ...(revalued ? { light, ...(hasDark ? { dark } : {}) } : {}),
         ...(resyntaxed ? { codeSyntax: variable.codeSyntax } : {}),
         ...(rescoped ? { scopes: variable.scopes } : {}),

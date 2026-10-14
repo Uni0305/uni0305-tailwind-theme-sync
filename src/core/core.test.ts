@@ -486,3 +486,44 @@ describe("buildFigmaSpec unconvertedKeys", () => {
     })
   })
 })
+
+describe("buildFigmaSpec renamed", () => {
+  const tokens = new Map([
+    ["--font-display", "Satoshi"],
+    ["--font-weight-bold", "700"],
+    ["--text-huge", "64px"],
+    ["--color-accent", "#0d99ff"],
+    ["--color-brand", "#000000"],
+    ["--blur-soft", "8px"],
+  ])
+
+  it("maps the keys items had under earlier token names to their keys now", () => {
+    const spec = buildFigmaSpec(tokens, {
+      textStyleSlots: ["display"],
+      renames: {
+        "--font-display": ["--font-brand"],
+        "--text-huge": ["--text-big"],
+        "--blur-soft": ["--blur-haze"],
+      },
+    })
+
+    expect(spec.renamed).toMatchObject({
+      "--font-brand": "--font-display",
+      "--text-big": "--text-huge",
+      "--blur-haze": "--blur-soft",
+      "--blur-haze@layer": "--blur-soft@layer",
+      "--blur-haze@backdrop": "--blur-soft@backdrop",
+      "text:brand/huge/bold": "text:display/huge/bold",
+      "text:brand/big/bold": "text:display/huge/bold",
+      "text:display/big/bold": "text:display/huge/bold",
+    })
+  })
+
+  it("leaves out an earlier key that an item still uses", () => {
+    const spec = buildFigmaSpec(tokens, {
+      renames: { "--color-accent": ["--color-brand", "--color-old"] },
+    })
+
+    expect(spec.renamed).toEqual({ "--color-old": "--color-accent" })
+  })
+})

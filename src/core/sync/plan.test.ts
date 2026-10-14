@@ -53,6 +53,7 @@ function specOf(
     effectStyles: [],
     skipped: [],
     unconvertedKeys: [],
+    renamed: {},
   }
 }
 
@@ -1074,5 +1075,218 @@ describe("planSync removals", () => {
 
     expect(result.summary.deleted).toHaveLength(3)
     expect(result.ops.filter((op) => op.kind === "remove")).toHaveLength(3)
+  })
+})
+
+describe("planSync renames", () => {
+  const renamed = { "--color-brand": "--color-accent" }
+  const accent = color("--color-accent", "accent")
+  const withRenames = (spec: FigmaSpec, map: Record<string, string>) => ({
+    ...spec,
+    renamed: map,
+  })
+
+  it("renames the variable found under an earlier key, keeping its id", () => {
+    const result = plan(
+      withRenames(specOf({ Color: [accent] }), renamed),
+      snapshotOf([colorSnap("--color-brand", "brand")])
+    )
+
+    expect(result.summary).toMatchObject({
+      created: 0,
+      updated: 1,
+      deleted: [],
+      renamed: ["brand → accent"],
+    })
+    const update = result.ops.find((op) => op.kind === "updateVariable")
+    expect(update).toMatchObject({
+      id: "v:--color-brand",
+      key: "--color-accent",
+      name: "accent",
+    })
+    expect(update).not.toHaveProperty("light")
+  })
+
+  it("does not take an alias to a renamed variable for a hand edit", () => {
+    const primary = colorSnap("--color-primary", "primary", {
+      valuesByMode: { light: { aliasId: "v:--color-brand" } },
+      applied: "alias:--color-brand|alias:--color-brand",
+    })
+    const result = plan(
+      withRenames(
+        specOf({
+          Color: [
+            accent,
+            color("--color-primary", "primary", { aliasOf: "--color-accent" }),
+          ],
+        }),
+        renamed
+      ),
+      snapshotOf([colorSnap("--color-brand", "brand"), primary])
+    )
+
+    expect(result.summary).toMatchObject({
+      updated: 1,
+      unchanged: 1,
+      overwritten: [],
+    })
+  })
+
+  it("prefers the item under the current key to one under an earlier key", () => {
+    const result = plan(
+      withRenames(specOf({ Color: [accent] }), renamed),
+      snapshotOf([
+        colorSnap("--color-brand", "brand"),
+        colorSnap("--color-accent", "accent"),
+      ])
+    )
+
+    expect(result.summary).toMatchObject({
+      unchanged: 1,
+      renamed: [],
+      deleted: ["brand"],
+    })
+  })
+
+  it("keeps a renamed item of an unchecked group, and can still alias it", () => {
+    const result = plan(
+      withRenames(
+        specOf({
+          Color: [
+            color("--color-primary", "primary", { aliasOf: "--color-accent" }),
+          ],
+        }),
+        renamed
+      ),
+      snapshotOf([colorSnap("--color-brand", "brand")]),
+      ["--color-accent", "--color-brand"]
+    )
+
+    expect(result.summary).toMatchObject({ orphans: ["brand"], deleted: [] })
+    expect(result.references).toEqual({ "--color-accent": "v:--color-brand" })
+    expect(result.ops).toContainEqual(
+      expect.objectContaining({
+        kind: "createVariable",
+        key: "--color-primary",
+        light: { value: RED, aliasOf: "--color-accent" },
+      })
+    )
+  })
+
+  it("renames a text style found under an earlier key", () => {
+    const spec: FigmaSpec = {
+      ...withRenames(specOf({}), {
+        "text:brand/sm/bold": "text:display/sm/bold",
+      }),
+      textStyles: [
+        {
+          key: "text:display/sm/bold",
+          name: "display/sm/bold",
+          family: "Inter",
+          weight: 700,
+          fontSize: 14,
+          bindings: {
+            fontFamily: "--font-display",
+            fontWeight: "--font-weight-bold",
+            fontSize: "--text-sm",
+          },
+        },
+      ],
+    }
+    const result = plan(spec, {
+      ...EMPTY_SNAPSHOT,
+      fonts: [{ family: "Inter", style: "Bold" }],
+      textStyles: [
+        {
+          id: "t:brand",
+          key: "text:brand/sm/bold",
+          applied: "",
+          name: "brand/sm/bold",
+          font: { family: "Inter", style: "Bold" },
+          fontSize: 14,
+          lineHeight: { unit: "AUTO" },
+          bound: {},
+        },
+      ],
+    })
+
+    expect(result.summary).toMatchObject({
+      created: 0,
+      updated: 1,
+      deleted: [],
+      renamed: ["brand/sm/bold → display/sm/bold"],
+    })
+    expect(result.ops).toContainEqual(
+      expect.objectContaining({
+        kind: "updateTextStyle",
+        id: "t:brand",
+        key: "text:display/sm/bold",
+        name: "display/sm/bold",
+      })
+    )
+  })
+
+  it("keeps a blur bound to its renamed variable without a hand edit", () => {
+    const spec: FigmaSpec = {
+      ...withRenames(
+        specOf({
+          Size: [
+            {
+              key: "--blur-soft",
+              name: "blur/soft",
+              type: "FLOAT",
+              value: 8,
+              codeSyntax: "var(--blur-soft)",
+            },
+          ],
+        }),
+        {
+          "--blur-haze": "--blur-soft",
+          "--blur-haze@layer": "--blur-soft@layer",
+        }
+      ),
+      effectStyles: [
+        {
+          key: "--blur-soft@layer",
+          name: "blur/soft",
+          effects: [
+            { type: "LAYER_BLUR", radius: 8, radiusKey: "--blur-soft" },
+          ],
+        },
+      ],
+    }
+    const result = plan(spec, {
+      ...EMPTY_SNAPSHOT,
+      collections: [collectionSnap("Size", { id: "c:Size" })],
+      variables: [
+        colorSnap("--blur-haze", "blur/haze", {
+          type: "FLOAT",
+          collectionId: "c:Size",
+          valuesByMode: { light: 8 },
+          applied: "8|8",
+        }),
+      ],
+      effectStyles: [
+        {
+          id: "e:haze",
+          key: "--blur-haze@layer",
+          applied: '[["LAYER_BLUR",8,"--blur-haze"]]',
+          name: "blur/haze",
+          effects: [
+            { type: "LAYER_BLUR", radius: 8, radiusBoundId: "v:--blur-haze" },
+          ],
+        },
+      ],
+    })
+
+    expect(result.summary).toMatchObject({
+      updated: 2,
+      overwritten: [],
+      deleted: [],
+      renamed: ["blur/haze → blur/soft", "blur/haze → blur/soft"],
+    })
+    const update = result.ops.find((op) => op.kind === "updateEffectStyle")
+    expect(update).toMatchObject({ id: "e:haze", key: "--blur-soft@layer" })
+    expect(update).not.toHaveProperty("effects")
   })
 })

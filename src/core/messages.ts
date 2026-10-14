@@ -15,6 +15,8 @@ export type SyncSummary = {
   deleted: string[]
   /** Items edited by hand in Figma whose values the spec replaces. */
   overwritten: string[]
+  /** Items found under a renamed token's earlier key, as `old → new`. */
+  renamed: string[]
   /** Dark values were requested but the file's plan does not allow modes. */
   darkUnavailable: boolean
 }

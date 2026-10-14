@@ -93,6 +93,7 @@ export function App() {
         fontFamilies: overrides.fontFamilies,
         textStyleSlots: overrides.textStyleSlots,
         dark: overrides.darkEnabled ? overrides.dark : undefined,
+        renames: overrides.renames,
       }),
     [tokens, overrides]
   )

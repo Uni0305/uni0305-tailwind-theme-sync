@@ -20,7 +20,7 @@ export type Selection = {
   /**
    * Keys the sync must leave alone: the items of excluded groups, which are
    * still part of the theme, and whatever failed to convert, which is not
-   * gone but cannot be written right now.
+   * gone but cannot be written right now; each also under its earlier keys.
    */
   retained: string[]
   /** Items in the groups that stay checked. */
@@ -101,10 +101,16 @@ export function selectGroups(
     ),
   }
 
+  // What the file holds under a retained item's earlier key is its too.
+  const kept = new Set([...retained, ...spec.unconvertedKeys])
+  const earlier = Object.keys(spec.renamed).filter((previous) =>
+    kept.has(spec.renamed[previous])
+  )
+
   return {
     groups: [...groups.values()],
     spec: excluded.size === 0 ? spec : narrowed,
-    retained: [...retained, ...spec.unconvertedKeys],
+    retained: [...kept, ...earlier],
     selectedCount,
   }
 }
