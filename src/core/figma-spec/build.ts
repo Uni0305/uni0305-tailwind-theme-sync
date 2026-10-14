@@ -18,11 +18,25 @@ export type VariableValue =
   | { type: "FLOAT"; value: number }
   | { type: "STRING"; value: string }
 
+/** The subset of Figma's `VariableScope` that this plugin assigns. */
+export type VariableScope =
+  | "WIDTH_HEIGHT"
+  | "GAP"
+  | "CORNER_RADIUS"
+  | "EFFECT_FLOAT"
+  | "FONT_FAMILY"
+  | "FONT_WEIGHT"
+  | "FONT_SIZE"
+  | "LINE_HEIGHT"
+  | "LETTER_SPACING"
+
 export type VariableSpec = VariableValue & {
   /** Identifies the source token, used to find the variable on re-runs. */
   key: string
   name: string
   codeSyntax: string
+  /** Fields the variable is offered in; omitted to leave Figma's default. */
+  scopes?: VariableScope[]
 }
 
 export type CollectionName = "Color" | "Typography" | "Size"
@@ -119,7 +133,15 @@ export const SPACING_STEPS = [
   "96",
 ]
 
-const LENGTH_NAMESPACES = ["radius", "breakpoint", "container", "blur"]
+/** Length namespaces that become Size variables, and where each is offered. */
+const LENGTH_SCOPES = new Map<string, VariableScope[]>([
+  ["radius", ["CORNER_RADIUS"]],
+  ["breakpoint", ["WIDTH_HEIGHT"]],
+  ["container", ["WIDTH_HEIGHT"]],
+  ["blur", ["EFFECT_FLOAT"]],
+])
+
+const SPACING_SCOPES: VariableScope[] = ["GAP", "WIDTH_HEIGHT"]
 
 type Converted = { collection: CollectionName; variable: VariableSpec }
 
@@ -177,7 +199,8 @@ function float(
   collection: CollectionName,
   prop: string,
   name: string,
-  value: number | null
+  value: number | null,
+  scopes: VariableScope[]
 ): Converted | "skipped" {
   if (value === null) {
     return "skipped"
@@ -191,6 +214,7 @@ function float(
       type: "FLOAT",
       value,
       codeSyntax: `var(${prop})`,
+      scopes,
     },
   }
 }
@@ -248,7 +272,8 @@ function convertToken(
       "Typography",
       prop,
       name,
-      weight?.unit === "" ? weight.value : null
+      weight?.unit === "" ? weight.value : null,
+      ["FONT_WEIGHT"]
     )
   }
 
@@ -263,6 +288,7 @@ function convertToken(
         type: "STRING",
         value: families[rest] ?? firstFontFamily(raw),
         codeSyntax: `var(${prop})`,
+        scopes: ["FONT_FAMILY"],
       },
     }
   }
@@ -270,7 +296,9 @@ function convertToken(
   if (namespace === "text" && !rest.startsWith("shadow-")) {
     const [size, property] = rest.split("--")
     if (property === undefined) {
-      return float("Typography", prop, `text/${size}/size`, pixels(raw))
+      return float("Typography", prop, `text/${size}/size`, pixels(raw), [
+        "FONT_SIZE",
+      ])
     }
     if (property !== "line-height") {
       return null
@@ -288,7 +316,9 @@ function convertToken(
             ? round(lineHeight.value)
             : null
 
-    return float("Typography", prop, `text/${size}/line-height`, value)
+    return float("Typography", prop, `text/${size}/line-height`, value, [
+      "LINE_HEIGHT",
+    ])
   }
 
   if (namespace === "leading") {
@@ -298,7 +328,7 @@ function convertToken(
         ? round(leading.value)
         : null
 
-    return float("Typography", prop, `leading/${rest}`, value)
+    return float("Typography", prop, `leading/${rest}`, value, ["LINE_HEIGHT"])
   }
 
   if (namespace === "tracking") {
@@ -306,11 +336,20 @@ function convertToken(
     const tracking = evaluate(raw)
     const value = tracking?.unit === "em" ? round(tracking.value * 100) : null
 
-    return float("Typography", prop, `tracking/${rest}`, value)
+    return float("Typography", prop, `tracking/${rest}`, value, [
+      "LETTER_SPACING",
+    ])
   }
 
-  if (LENGTH_NAMESPACES.includes(namespace)) {
-    return float("Size", prop, `${namespace}/${rest}`, pixels(raw))
+  const lengthScopes = LENGTH_SCOPES.get(namespace)
+  if (lengthScopes) {
+    return float(
+      "Size",
+      prop,
+      `${namespace}/${rest}`,
+      pixels(raw),
+      lengthScopes
+    )
   }
 
   return null
@@ -328,6 +367,7 @@ function spacingVariables(raw: string): VariableSpec[] | null {
     type: "FLOAT",
     value: step === "px" ? 1 : round(base * Number(step)),
     codeSyntax: step === "px" ? "1px" : `calc(var(--spacing) * ${step})`,
+    scopes: SPACING_SCOPES,
   }))
 }
 

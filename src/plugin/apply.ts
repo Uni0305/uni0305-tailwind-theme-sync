@@ -146,6 +146,9 @@ async function syncCollection(
           created.setValueForMode(darkModeId, dark.value)
         }
         created.setVariableCodeSyntax("WEB", variableSpec.codeSyntax)
+        if (variableSpec.scopes) {
+          created.scopes = variableSpec.scopes
+        }
         variablesByKey.set(variableSpec.key, created)
       }
       continue
@@ -162,11 +165,17 @@ async function syncCollection(
     const renamed = existing.name !== variableSpec.name
     const revalued = current !== next
     const resyntaxed = existing.codeSyntax.WEB !== variableSpec.codeSyntax
+    // Only a variable still on Figma's default is narrowed; a scope someone
+    // set by hand is left as it is.
+    const rescoped =
+      !!variableSpec.scopes &&
+      existing.scopes.length === 1 &&
+      existing.scopes[0] === "ALL_SCOPES"
 
     if (revalued && applied && applied !== current) {
       summary.overwritten.push(existing.name)
     }
-    if (renamed || revalued || resyntaxed) {
+    if (renamed || revalued || resyntaxed || rescoped) {
       summary.updated += 1
     } else {
       summary.unchanged += 1
@@ -184,6 +193,9 @@ async function syncCollection(
       }
       if (resyntaxed) {
         existing.setVariableCodeSyntax("WEB", variableSpec.codeSyntax)
+      }
+      if (rescoped && variableSpec.scopes) {
+        existing.scopes = variableSpec.scopes
       }
     }
   }
