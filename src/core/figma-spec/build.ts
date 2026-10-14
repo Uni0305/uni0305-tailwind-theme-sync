@@ -1,5 +1,5 @@
 import { toFigmaColor } from "../convert/color"
-import type { ColorProfile, FigmaColor } from "../convert/color"
+import type { FigmaColor } from "../convert/color"
 import { parseShadows } from "../convert/shadow"
 import type { ShadowSpec } from "../convert/shadow"
 import { evaluate, round } from "../convert/units"
@@ -85,7 +85,6 @@ export type FigmaSpec = {
 }
 
 export type BuildOptions = {
-  colorProfile?: ColorProfile
   /** Figma font family per font slot (`sans`, `serif`, `mono`, custom). */
   fontFamilies?: Record<string, string>
   /** Dark-mode color values, by CSS custom property. */
@@ -237,17 +236,14 @@ function convertToken(
 
   if (namespace === "color") {
     const aliasOf = COLOR_ALIAS.exec(raw)?.[1]
-    const value = toFigmaColor(
-      followColorAliases(raw, tokens),
-      options.colorProfile
-    )
+    const value = toFigmaColor(followColorAliases(raw, tokens))
     if (!value) {
       return "skipped"
     }
 
     const darkRaw = options.dark?.[prop]
     const dark = darkRaw
-      ? toFigmaColor(followColorAliases(darkRaw, tokens), options.colorProfile)
+      ? toFigmaColor(followColorAliases(darkRaw, tokens))
       : null
 
     return {
@@ -430,7 +426,6 @@ const SHADOW_NAMESPACES = [
 
 function effectStyles(
   tokens: ThemeTokens,
-  options: BuildOptions,
   skipped: string[]
 ): EffectStyleSpec[] {
   const styles: EffectStyleSpec[] = []
@@ -442,7 +437,6 @@ function effectStyles(
     if (namespace) {
       const effects = parseShadows(raw, {
         inner: namespace === "inset-shadow",
-        colorProfile: options.colorProfile,
       })
       if (!effects) {
         skipped.push(prop)
@@ -518,7 +512,7 @@ export function buildFigmaSpec(
       variables.Typography,
       options.textStyleSlots ?? ["sans"]
     ),
-    effectStyles: effectStyles(tokens, options, skipped),
+    effectStyles: effectStyles(tokens, skipped),
     skipped,
   }
 }

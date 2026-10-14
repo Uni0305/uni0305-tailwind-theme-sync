@@ -1,5 +1,5 @@
 import { toFigmaColor } from "./color"
-import type { ColorProfile, FigmaColor } from "./color"
+import type { FigmaColor } from "./color"
 import { evaluate, round } from "./units"
 
 export type ShadowSpec = {
@@ -32,11 +32,7 @@ function splitTopLevel(input: string, separator: "," | " ") {
   return parts.map((part) => part.trim()).filter(Boolean)
 }
 
-function parseShadow(
-  input: string,
-  inner: boolean,
-  profile: ColorProfile | undefined
-): ShadowSpec | null {
+function parseShadow(input: string, inner: boolean): ShadowSpec | null {
   const lengths: number[] = []
   let color: FigmaColor | null = null
   let inset = inner
@@ -53,7 +49,7 @@ function parseShadow(
       continue
     }
 
-    color = toFigmaColor(part, profile)
+    color = toFigmaColor(part)
     if (!color) {
       return null
     }
@@ -80,16 +76,12 @@ function parseShadow(
  */
 export function parseShadows(
   input: string,
-  options: { inner?: boolean; colorProfile?: ColorProfile } = {}
+  options: { inner?: boolean } = {}
 ): ShadowSpec[] | null {
   const shadows: ShadowSpec[] = []
 
   for (const part of splitTopLevel(input, ",")) {
-    const shadow = parseShadow(
-      part,
-      options.inner ?? false,
-      options.colorProfile
-    )
+    const shadow = parseShadow(part, options.inner ?? false)
     if (!shadow) {
       return null
     }

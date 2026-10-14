@@ -36,21 +36,17 @@ describe("toFigmaColor", () => {
   it("converts in-gamut colors exactly", () => {
     expect(toFigmaColor("#ff0000")).toEqual({ r: 1, g: 0, b: 0, a: 1 })
     expect(toFigmaColor("oklch(1 0 0)")).toEqual({ r: 1, g: 1, b: 1, a: 1 })
-    expect(toFigmaColor("rgb(0 0 0 / 0.1)")?.a).toBe(0.1)
+    // Alpha round-trips through an 8-bit hex channel, so 0.1 becomes 26/255.
+    expect(toFigmaColor("rgb(0 0 0 / 0.1)")?.a).toBeCloseTo(0.1, 2)
   })
 
-  it("maps out-of-gamut colors into the target profile", () => {
-    const vivid = "oklch(63.7% 0.3 25.331)"
-    const srgb = toFigmaColor(vivid, "SRGB")!
-    const p3 = toFigmaColor(vivid, "DISPLAY_P3")!
+  it("clips out-of-range colors into 0-1 channels", () => {
+    const vivid = toFigmaColor("oklch(63.7% 0.3 25.331)")!
 
-    for (const color of [srgb, p3]) {
-      for (const value of [color.r, color.g, color.b]) {
-        expect(value).toBeGreaterThanOrEqual(0)
-        expect(value).toBeLessThanOrEqual(1)
-      }
+    for (const value of [vivid.r, vivid.g, vivid.b, vivid.a]) {
+      expect(value).toBeGreaterThanOrEqual(0)
+      expect(value).toBeLessThanOrEqual(1)
     }
-    expect(p3).not.toEqual(srgb)
   })
 
   it("returns null for values that are not colors", () => {
@@ -241,17 +237,18 @@ describe("buildFigmaSpec styles", () => {
     const style = (name: string) =>
       spec.effectStyles.find((s) => s.name === name)
 
+    // Alpha round-trips through an 8-bit hex channel, so 0.1 becomes 26/255.
     expect(style("shadow/sm")?.effects).toEqual([
       {
         type: "DROP_SHADOW",
-        color: { r: 0, g: 0, b: 0, a: 0.1 },
+        color: { r: 0, g: 0, b: 0, a: expect.closeTo(0.1, 2) },
         offset: { x: 0, y: 1 },
         radius: 3,
         spread: 0,
       },
       {
         type: "DROP_SHADOW",
-        color: { r: 0, g: 0, b: 0, a: 0.1 },
+        color: { r: 0, g: 0, b: 0, a: expect.closeTo(0.1, 2) },
         offset: { x: 0, y: 1 },
         radius: 2,
         spread: -1,

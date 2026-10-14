@@ -1,59 +1,23 @@
-import { converter, inGamut, parse, toGamut } from "culori"
-import type { Color } from "culori"
-
-export type ColorProfile = "SRGB" | "DISPLAY_P3"
+import { formatHex8, parse } from "culori"
 
 export type FigmaColor = { r: number; g: number; b: number; a: number }
 
-type Rgb = { r: number; g: number; b: number; alpha?: number }
-
-type Space = {
-  convert: (color: Color) => Rgb
-  inGamut: (color: Color) => boolean
-  map: (color: Color) => Rgb
-}
-
-const SPACES: Record<ColorProfile, Space> = {
-  SRGB: {
-    convert: converter("rgb"),
-    inGamut: inGamut("rgb"),
-    map: toGamut("rgb", "oklch"),
-  },
-  DISPLAY_P3: {
-    convert: converter("p3"),
-    inGamut: inGamut("p3"),
-    map: toGamut("p3", "oklch"),
-  },
-}
-
-function channel(value: number) {
-  return Math.min(1, Math.max(0, Math.round(value * 1e4) / 1e4))
-}
-
 /**
- * Converts any CSS color to RGBA channels in the document's color profile.
- * Out-of-gamut colors are mapped by reducing chroma, which keeps the hue.
+ * Converts any CSS color to sRGB RGBA channels by round-tripping it through
+ * an 8-digit hex code. Out-of-range channels are clipped, not gamut-mapped.
  */
-export function toFigmaColor(
-  css: string,
-  profile: ColorProfile = "SRGB"
-): FigmaColor | null {
+export function toFigmaColor(css: string): FigmaColor | null {
   const parsed = parse(css)
   if (!parsed) {
     return null
   }
 
-  // Gamut mapping nudges colors that already fit, so only map the ones that
-  // fall outside the target space.
-  const space = SPACES[profile]
-  const mapped = space.inGamut(parsed)
-    ? space.convert(parsed)
-    : space.map(parsed)
+  const hex = formatHex8(parsed)
 
   return {
-    r: channel(mapped.r),
-    g: channel(mapped.g),
-    b: channel(mapped.b),
-    a: channel(mapped.alpha ?? 1),
+    r: parseInt(hex.slice(1, 3), 16) / 255,
+    g: parseInt(hex.slice(3, 5), 16) / 255,
+    b: parseInt(hex.slice(5, 7), 16) / 255,
+    a: parseInt(hex.slice(7, 9), 16) / 255,
   }
 }
